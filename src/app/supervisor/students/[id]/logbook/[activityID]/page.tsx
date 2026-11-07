@@ -1,32 +1,103 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Calendar, Clock, FileText, Paperclip } from 'lucide-react';
 import ReviewActionPanel from '../../../../../../components/supervisor/ReviewActionPanel';
+import { getEvidenceUrl, type EvidenceMetadata } from '../../../../../../services/api';
 
-type UIActivityStatus = 'pending' | 'approved' | 'rejected' | 'correction_requested';
+type UIActivityStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION';
 
 interface ReviewActionPayload {
-  action: 'approve' | 'reject' | 'request_correction';
+  action: 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION';
   comment?: string;
   rating?: number;
 }
 
-// Temporary mock data for Sprint 1 UI binding
+// Updated to match Ajibola's strict schema
 const mockEntry = {
   id: 'act_101',
   studentName: 'David Ibrahim',
+  // matriculationNumber is intentionally omitted per Ajibola
   date: '2026-10-12',
   hours: 8,
   department: 'Software Engineering',
-  description: 'Implemented the user authentication flow using NextAuth.js. Configured the PostgreSQL database schema for the user profiles and tested the login/logout endpoints.',
-  learned: 'Gained a deeper understanding of JWT session management and backend route protection.',
-  status: 'pending' as UIActivityStatus,
-  attachedEvidence: 'auth_flow_diagram.pdf'
+  description: 'Implemented the user authentication flow using NextAuth.js.',
+  learned: 'Gained a deeper understanding of JWT session management.',
+  status: 'PENDING' as UIActivityStatus,
+  submittedAt: '2026-10-12T14:30:00Z',
+  evidence: [
+    {
+      documentId: 'doc_99283',
+      fileName: 'auth_flow_diagram.pdf',
+      fileFormat: 'application/pdf',
+      fileSizeBytes: 1048576,
+      uploadedAt: '2026-10-12T14:30:00Z'
+    }
+  ] as EvidenceMetadata[]
 };
 
+// New EvidenceViewer component sits right here in the same file!
+function EvidenceViewer({ evidence }: { evidence: EvidenceMetadata }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    
+    // Fetch the 300-second expiring URL directly on render per Ajibola's spec
+    getEvidenceUrl(evidence.documentId)
+      .then((res) => {
+        if (isMounted) {
+          setUrl(res.url);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error("Evidence fetch failed:", err);
+        if (isMounted) {
+          setError(true);
+          setLoading(false);
+        }
+      });
+
+    return () => { isMounted = false; };
+  }, [evidence.documentId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 bg-slate-100 text-slate-500 px-4 py-2 rounded-lg text-sm font-medium animate-pulse w-fit">
+        <Paperclip size={18} /> Loading secure link...
+      </div>
+    );
+  }
+
+  if (error || !url) {
+    return (
+      <div className="flex items-center gap-2 bg-rose-50 text-rose-600 px-4 py-2 rounded-lg text-sm font-medium w-fit">
+        <Paperclip size={18} /> Failed to load evidence
+      </div>
+    );
+  }
+
+  return (
+    <a 
+      href={url} 
+      target="_blank" 
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-2 text-siwes-blue hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg font-medium transition-colors"
+    >
+      <Paperclip size={18} />
+      {evidence.fileName} <span className="text-slate-400 text-xs font-normal">
+        ({(evidence.fileSizeBytes / 1024 / 1024).toFixed(2)} MB)
+      </span>
+    </a>
+  );
+}
+
+// Main page component
 export default function ActivityReviewPage() {
   const params = useParams();
   const router = useRouter(); 
@@ -36,12 +107,8 @@ export default function ActivityReviewPage() {
   const handleReviewSubmission = (payload: ReviewActionPayload) => {
     console.log('Sprint 1 Mock - Payload ready for Backend:', payload);
     
-    // Update local UI state to show the panel's success state
-    setActivityStatus(
-      payload.action === 'approve' ? 'approved' : 
-      payload.action === 'reject' ? 'rejected' : 
-      'correction_requested'
-    );
+    // Update local UI state to show the panel's success state directly
+    setActivityStatus(payload.action);
     
     alert(`Review submitted successfully! Action: ${payload.action}`);
   };
@@ -102,13 +169,14 @@ export default function ActivityReviewPage() {
             </p>
           </div>
 
-          {mockEntry.attachedEvidence && (
+          {mockEntry.evidence && mockEntry.evidence.length > 0 && (
             <div>
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-2">Attached Evidence</h3>
-              <button className="flex items-center gap-2 text-siwes-blue hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg font-medium transition-colors">
-                <Paperclip size={18} />
-                {mockEntry.attachedEvidence}
-              </button>
+              <div className="flex flex-wrap gap-3">
+                {mockEntry.evidence.map((item) => (
+                  <EvidenceViewer key={item.documentId} evidence={item} />
+                ))}
+              </div>
             </div>
           )}
         </div>

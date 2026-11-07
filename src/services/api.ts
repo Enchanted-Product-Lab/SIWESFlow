@@ -1,84 +1,117 @@
 // src/services/api.ts
 
-// Based on Prisma Enums in TRD
-export type LogStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'NEEDS_REVISION';
+export type LogStatus = 'PENDING' | 'SUBMITTED' | 'APPROVED' | 'NEEDS_REVISION' | 'REJECTED';
 
-// Expected Response Envelope from TRD
-export interface ApiResponse<T = unknown> {
-  success: boolean;
-  message?: string;
-  data?: T;
-  meta?: {
-    page?: number;
-    limit?: number;
-    totalCount?: number;
-  };
-  errors?: Array<{ field: string; message: string }>;
+export interface EvidenceMetadata {
+  documentId: string;
+  fileName: string;
+  fileFormat: string;
+  fileSizeBytes: number;
+  uploadedAt: string;
+}
+
+export interface ActivityLogEntry {
+  id: string;
+  studentName: string;
+  date: string;
+  hours: number;
+  department: string;
+  description: string;
+  learned: string;
+  status: LogStatus;
+  submittedAt: string;
+  evidence: EvidenceMetadata[];
+}
+
+// Paginated response list schema (No {success} wrapper per Ajibola's backend spec)
+export interface PaginatedList<T> {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface ReviewSubmissionPayload {
   activityId: string;
-  status: 'APPROVED' | 'NEEDS_REVISION';
+  action: 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION';
   feedback: string;
   rating?: number;
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1';
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api';
 
 // ---------------------------------------------------------
-// AVAILABLE ENDPOINTS (From TRD)
+// API ENDPOINTS
 // ---------------------------------------------------------
 
 /**
  * Fetch all pending logs for the supervisor
- * Endpoint: GET /api/v1/logbook/entries
+ * Endpoint: GET /api/activities?status=SUBMITTED
  */
-export async function getPendingActivities(supervisorId: string) {
-  // TRD specifies filtering by review status. Assuming we pass supervisorId or auth token handles it.
-  const res = await fetch(`${BASE_URL}/logbook/entries?status=SUBMITTED`, {
-    headers: {
-      'Content-Type': 'application/json',
-      // 'Authorization': `Bearer ${token}` // Will need this once auth is hooked up
-    },
+export async function getPendingActivities(supervisorId: string): Promise<PaginatedList<ActivityLogEntry>> {
+  const res = await fetch(`${BASE_URL}/activities?status=SUBMITTED`, {
+    headers: { 'Content-Type': 'application/json' },
     cache: 'no-store'
   });
 
   if (!res.ok) throw new Error("Failed to fetch pending activities");
-  const json: ApiResponse = await res.json();
-  return json.data;
+  return res.json();
 }
 
 /**
  * Submit supervisor assessment
- * Endpoint: POST /api/v1/logbook/entries/:id/review
+ * Endpoint: POST /api/activities/:id/review
  */
-export async function submitActivityReview(payload: ReviewSubmissionPayload) {
-  const res = await fetch(`${BASE_URL}/logbook/entries/${payload.activityId}/review`, {
+export async function submitActivityReview(payload: ReviewSubmissionPayload): Promise<{ message: string }> {
+  const res = await fetch(`${BASE_URL}/activities/${payload.activityId}/review`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      status: payload.status,
-      feedback: payload.feedback,
-      rating: payload.rating
-    })
+    body: JSON.stringify(payload)
   });
 
   if (!res.ok) throw new Error("Failed to submit review");
   return res.json();
 }
 
-// ---------------------------------------------------------
-// MISSING ENDPOINTS (Mocks for now until Ayonife updates)
-// ---------------------------------------------------------
+/**
+ * Evidence URL Fetcher
+ * Endpoint: GET /documents/:id/url (Hits root domain directly, bypassing the /api prefix)
+ * CRITICAL: DO NOT CACHE - URL expires in 300 seconds.
+ */
+export async function getEvidenceUrl(documentId: string): Promise<{ url: string }> {
+  const rootUrl = process.env.NEXT_PUBLIC_ROOT_URL || 'http://localhost:8000';
+  const res = await fetch(`${rootUrl}/documents/${documentId}/url`, {
+    cache: 'no-store'
+  });
 
-export async function getActivityById(activityId: string) {
-  // TODO: Waiting on Ayonife for GET /api/v1/logbook/entries/:id
-  console.warn("getActivityById endpoint is missing from TRD. Using mock data.");
-  return null; 
+  if (!res.ok) throw new Error("Failed to fetch evidence URL");
+  return res.json();
 }
 
-export async function getSupervisorMetrics() {
-  // TODO: Waiting on Ayonife for Dashboard metrics endpoint
-  console.warn("getSupervisorMetrics endpoint is missing from TRD. Using mock data.");
-  return null;
+/**
+ * Fetch single logbook entry detail by ID
+ * Endpoint: GET /api/activities/:id
+ */
+export async function getActivityById(activityId: string): Promise<ActivityLogEntry | null> {
+  const res = await fetch(`${BASE_URL}/activities/${activityId}`, {
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store'
+  });
+
+  if (!res.ok) throw new Error("Failed to fetch activity entry");
+  return res.json();
+}
+
+/**
+ * Fetch supervisor dashboard metrics
+ * Endpoint: GET /api/supervisors/me/metrics
+ */
+export async function getSupervisorMetrics(): Promise<Record<string, unknown> | null> {
+  const res = await fetch(`${BASE_URL}/supervisors/me/metrics`, {
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store'
+  });
+
+  if (!res.ok) throw new Error("Failed to fetch supervisor metrics");
+  return res.json();
 }
