@@ -1,23 +1,66 @@
+"use client";
+
 import Link from "next/link";
 
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
+import { useEffect, useMemo, useState } from "react";
 import { mockStudents } from "@/data/mock";
+import { Student } from "@/types";
+import { fetchStudentsWithFallback } from "@/services/schoolService";
 
 export default function SchoolPlacementsPage() {
-  const totalStudents = mockStudents.length;
+  const [students, setStudents] = useState<Student[]>(mockStudents);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "placed" | "unplaced">("all");
+  const [isLoading, setIsLoading] = useState(true);
 
-  const placedStudents = mockStudents.filter(
-    (student) => student.placementCompany.trim().length > 0,
+  useEffect(() => {
+    let isMounted = true;
+    async function load() {
+      try {
+        const live = await fetchStudentsWithFallback();
+        if (isMounted) setStudents(live);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    load();
+    return () => { isMounted = false; };
+  }, []);
+
+  const totalStudents = students.length;
+
+  const placedStudents = useMemo(
+    () => students.filter((s) => s.placementCompany.trim().length > 0),
+    [students]
   );
 
-  const unplacedStudents = mockStudents.filter(
-    (student) => student.placementCompany.trim().length === 0,
+  const unplacedStudents = useMemo(
+    () => students.filter((s) => s.placementCompany.trim().length === 0),
+    [students]
   );
 
   const placementCoverage =
     totalStudents > 0
       ? Math.round((placedStudents.length / totalStudents) * 100)
       : 0;
+
+  const filteredStudents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return students.filter((student) => {
+      const isPlaced = student.placementCompany.trim().length > 0;
+      if (statusFilter === "placed" && !isPlaced) return false;
+      if (statusFilter === "unplaced" && isPlaced) return false;
+      if (!q) return true;
+      return (
+        student.name.toLowerCase().includes(q) ||
+        student.matricNumber.toLowerCase().includes(q) ||
+        student.university.toLowerCase().includes(q) ||
+        student.department.toLowerCase().includes(q) ||
+        student.placementCompany.toLowerCase().includes(q)
+      );
+    });
+  }, [students, searchQuery, statusFilter]);
 
   return (
     <div className="min-h-screen bg-[#f7f8fc] text-[#10195c]">
@@ -328,7 +371,7 @@ export default function SchoolPlacementsPage() {
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
-                    {mockStudents.map((student) => {
+                    {filteredStudents.map((student) => {
                       const isPlaced =
                         student.placementCompany.trim().length > 0;
 
@@ -418,7 +461,7 @@ export default function SchoolPlacementsPage() {
 
               {/* Mobile cards */}
               <div className="divide-y divide-slate-100 md:hidden">
-                {mockStudents.map((student) => {
+                {filteredStudents.map((student) => {
                   const isPlaced =
                     student.placementCompany.trim().length > 0;
 

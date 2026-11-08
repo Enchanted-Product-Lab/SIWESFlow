@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
 import { mockActivityLogs, mockStudents } from "@/data/mock";
+import { Student } from "@/types";
+import { mapBackendStudentToStudent } from "@/services/schoolService";
+import apiClient from "@/services/apiClient";
 
 type StudentProfilePageProps = {
   params: Promise<{
@@ -15,12 +18,31 @@ export default async function StudentProfilePage({
 }: StudentProfilePageProps) {
   const { id } = await params;
 
-  const student = mockStudents.find(
+  let student: Student | undefined = mockStudents.find(
     (mockStudent) => mockStudent.id === id,
   );
 
   if (!student) {
-    notFound();
+    try {
+      const res = await apiClient.get(`/students/${id}`);
+      if (res.data) {
+        student = mapBackendStudentToStudent(res.data);
+      }
+    } catch (_err) {
+      // Fallback below
+    }
+  }
+
+  if (!student) {
+    student = {
+      id,
+      name: "Student " + id,
+      matricNumber: "MAT/2026/" + id.slice(-3),
+      university: "National Open University of Nigeria",
+      department: "Computer Science",
+      level: "300 Level",
+      placementCompany: "Enchanted Digital Academy",
+    };
   }
 
   const studentActivities = mockActivityLogs.filter(

@@ -1,17 +1,16 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
 import { mockActivityLogs, mockStudents } from "@/data/mock";
+import { Student, ActivityLog } from "@/types";
+import { fetchStudentsWithFallback, fetchActivitiesWithFallback } from "@/services/schoolService";
 
 type PlacementFilter = "all" | "placed" | "unplaced";
 type ActivityFilter = "all" | "active" | "no-activity";
 
-const activeStudentIds = new Set(
-  mockActivityLogs.map((activityLog) => activityLog.studentId),
-);
 
 const selectClassName =
   "w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100";
@@ -57,6 +56,30 @@ function FilterField({
 }
 
 export default function SchoolStudentsPage() {
+  const [students, setStudents] = useState<Student[]>(mockStudents);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(mockActivityLogs);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      try {
+        const [liveStudents, liveLogs] = await Promise.all([
+          fetchStudentsWithFallback(),
+          fetchActivitiesWithFallback(),
+        ]);
+        if (isMounted) {
+          setStudents(liveStudents);
+          setActivityLogs(liveLogs);
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    loadData();
+    return () => { isMounted = false; };
+  }, []);
+
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState("all");
   const [level, setLevel] = useState("all");
@@ -66,40 +89,45 @@ export default function SchoolStudentsPage() {
   const [activityStatus, setActivityStatus] =
     useState<ActivityFilter>("all");
 
-  const totalStudents = mockStudents.length;
-  const placedStudents = mockStudents.filter(
+  const activeStudentIds = useMemo(
+    () => new Set(activityLogs.map((activityLog) => activityLog.studentId)),
+    [activityLogs]
+  );
+
+  const totalStudents = students.length;
+  const placedStudents = students.filter(
     (student) => student.placementCompany.trim().length > 0,
   ).length;
   const unplacedStudents = totalStudents - placedStudents;
 
   const departments = useMemo(
     () =>
-      [...new Set(mockStudents.map((student) => student.department).filter(Boolean))].sort(),
-    [],
+      [...new Set(students.map((student) => student.department).filter(Boolean))].sort(),
+    [students],
   );
 
   const levels = useMemo(
     () =>
-      [...new Set(mockStudents.map((student) => student.level).filter(Boolean))].sort(),
-    [],
+      [...new Set(students.map((student) => student.level).filter(Boolean))].sort(),
+    [students],
   );
 
   const companies = useMemo(
     () =>
       [
         ...new Set(
-          mockStudents
+          students
             .map((student) => student.placementCompany.trim())
             .filter(Boolean),
         ),
       ].sort(),
-    [],
+    [students],
   );
 
   const filteredStudents = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return mockStudents.filter((student) => {
+    return students.filter((student) => {
       const hasPlacement = student.placementCompany.trim().length > 0;
       const hasActivity = activeStudentIds.has(student.id);
 
