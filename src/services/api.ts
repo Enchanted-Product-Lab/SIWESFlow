@@ -33,8 +33,8 @@ export interface PaginatedList<T> {
 
 export interface ReviewSubmissionPayload {
   activityId: string;
-  status?: "APPROVED" | "REJECTED" | "NEEDS_REVISION";
-  action?: "APPROVED" | "REJECTED" | "NEEDS_REVISION";
+  status?: "APPROVED" | "NEEDS_REVISION";
+  action?: "APPROVED" | "NEEDS_REVISION";
   comment?: string;
   feedback?: string;
   rating?: number;
@@ -54,12 +54,14 @@ export async function getPendingActivities(
 /**
  * Submit supervisor assessment.
  * Maps incoming action/feedback to backend { status, comment, rating } contract.
+ * Strictly uses APPROVED or NEEDS_REVISION per TRD §5.1.
  * Uses apiClient with automatic Bearer token.
  */
 export async function submitActivityReview(
   payload: ReviewSubmissionPayload,
 ): Promise<{ message: string }> {
-  const status = payload.status || payload.action || "APPROVED";
+  const rawStatus = payload.status || payload.action;
+  const status = rawStatus === "APPROVED" ? "APPROVED" : "NEEDS_REVISION";
   const comment = payload.comment ?? payload.feedback;
 
   const res = await apiClient.patch<{ message: string }>(
