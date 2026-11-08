@@ -1,6 +1,7 @@
 // src/services/api.ts
+import apiClient from "./apiClient";
 
-export type LogStatus = 'PENDING' | 'SUBMITTED' | 'APPROVED' | 'NEEDS_REVISION' | 'REJECTED';
+export type LogStatus = "PENDING" | "APPROVED" | "NEEDS_REVISION" | "REJECTED";
 
 export interface EvidenceMetadata {
   documentId: string;
@@ -23,7 +24,6 @@ export interface ActivityLogEntry {
   evidence: EvidenceMetadata[];
 }
 
-// Paginated response list schema (No {success} wrapper per Ajibola's backend spec)
 export interface PaginatedList<T> {
   data: T[];
   page: number;
@@ -33,85 +33,69 @@ export interface PaginatedList<T> {
 
 export interface ReviewSubmissionPayload {
   activityId: string;
-  action: 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION';
-  feedback: string;
+  status?: "APPROVED" | "NEEDS_REVISION";
+  action?: "APPROVED" | "NEEDS_REVISION";
+  comment?: string;
+  feedback?: string;
   rating?: number;
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api';
-
-// ---------------------------------------------------------
-// API ENDPOINTS
-// ---------------------------------------------------------
-
 /**
- * Fetch all pending logs for the supervisor
- * Endpoint: GET /api/activities?status=SUBMITTED
+ * Fetch all pending logs for the supervisor.
+ * Backend enum requires PENDING. Uses apiClient with automatic Bearer token.
  */
-export async function getPendingActivities(supervisorId: string): Promise<PaginatedList<ActivityLogEntry>> {
-  const res = await fetch(`${BASE_URL}/activities?status=SUBMITTED`, {
-    headers: { 'Content-Type': 'application/json' },
-    cache: 'no-store'
-  });
-
-  if (!res.ok) throw new Error("Failed to fetch pending activities");
-  return res.json();
+export async function getPendingActivities(
+  _supervisorId?: string,
+): Promise<PaginatedList<ActivityLogEntry>> {
+  const res = await apiClient.get<PaginatedList<ActivityLogEntry>>("/activities?status=PENDING");
+  return res.data;
 }
 
 /**
- * Submit supervisor assessment
- * Endpoint: POST /api/activities/:id/review
+ * Submit supervisor assessment.
+ * Maps incoming action/feedback to backend { status, comment, rating } contract.
+ * Strictly uses APPROVED or NEEDS_REVISION per TRD §5.1.
+ * Uses apiClient with automatic Bearer token.
  */
-export async function submitActivityReview(payload: ReviewSubmissionPayload): Promise<{ message: string }> {
-  const res = await fetch(`${BASE_URL}/activities/${payload.activityId}/review`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+export async function submitActivityReview(
+  payload: ReviewSubmissionPayload,
+): Promise<{ message: string }> {
+  const rawStatus = payload.status || payload.action;
+  const status = rawStatus === "APPROVED" ? "APPROVED" : "NEEDS_REVISION";
+  const comment = payload.comment ?? payload.feedback;
 
-  if (!res.ok) throw new Error("Failed to submit review");
-  return res.json();
+  const res = await apiClient.patch<{ message: string }>(
+    `/activities/${payload.activityId}/review`,
+    {
+      status,
+      ...(comment ? { comment } : {}),
+      ...(payload.rating ? { rating: payload.rating } : {}),
+    },
+  );
+  return res.data;
 }
 
 /**
  * Evidence URL Fetcher
- * Endpoint: GET /documents/:id/url (Hits root domain directly, bypassing the /api prefix)
- * CRITICAL: DO NOT CACHE - URL expires in 300 seconds.
+ * Hits /documents/:id/url to retrieve a signed download URL.
  */
 export async function getEvidenceUrl(documentId: string): Promise<{ url: string }> {
-  const rootUrl = process.env.NEXT_PUBLIC_ROOT_URL || 'http://localhost:8000';
-  const res = await fetch(`${rootUrl}/documents/${documentId}/url`, {
-    cache: 'no-store'
-  });
-
-  if (!res.ok) throw new Error("Failed to fetch evidence URL");
-  return res.json();
+  const res = await apiClient.get<{ url: string }>(`/documents/${documentId}/url`);
+  return res.data;
 }
 
 /**
  * Fetch single logbook entry detail by ID
- * Endpoint: GET /api/activities/:id
  */
 export async function getActivityById(activityId: string): Promise<ActivityLogEntry | null> {
-  const res = await fetch(`${BASE_URL}/activities/${activityId}`, {
-    headers: { 'Content-Type': 'application/json' },
-    cache: 'no-store'
-  });
-
-  if (!res.ok) throw new Error("Failed to fetch activity entry");
-  return res.json();
+  const res = await apiClient.get<ActivityLogEntry>(`/activities/${activityId}`);
+  return res.data;
 }
 
 /**
  * Fetch supervisor dashboard metrics
- * Endpoint: GET /api/supervisors/me/metrics
  */
 export async function getSupervisorMetrics(): Promise<Record<string, unknown> | null> {
-  const res = await fetch(`${BASE_URL}/supervisors/me/metrics`, {
-    headers: { 'Content-Type': 'application/json' },
-    cache: 'no-store'
-  });
-
-  if (!res.ok) throw new Error("Failed to fetch supervisor metrics");
-  return res.json();
+  const res = await apiClient.get<Record<string, unknown>>("/supervisors/me/metrics");
+  return res.data;
 }

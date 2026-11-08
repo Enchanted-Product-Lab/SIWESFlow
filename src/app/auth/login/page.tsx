@@ -5,6 +5,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
+import axios from 'axios';
+import apiClient from '../../../services/apiClient';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,17 +26,41 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // Sprint 1 Mock API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      if (formData.email && formData.password) {
-        localStorage.setItem('siwesflow_auth_token', 'mock_jwt_token_12345');
-        router.push('/student/dashboard');
-      } else {
+      if (!formData.email || !formData.password) {
         throw new Error('Please enter your credentials.');
       }
-    } catch (err: any) {
-      setError(err.message || 'Invalid credentials. Please try again.');
+
+      // Live API call to the backend staging server
+      const response = await apiClient.post('/auth/login', {
+        email: formData.email,
+        password: formData.password
+      });
+
+      const authToken = response.data?.accessToken || response.data?.token;
+      const user = response.data?.user;
+
+      // Store token using the exact key expected by our apiClient interceptor
+      if (authToken) {
+        localStorage.setItem('siwesflow_token', authToken);
+      }
+
+      // Route based on RBAC roles (fallback to student onboarding/dashboard)
+      if (user?.role === 'SUPERVISOR') {
+        router.push('/supervisor/dashboard');
+      } else if (user?.role === 'SCHOOL_COORDINATOR' || user?.role === 'SCHOOL') {
+        router.push('/school/dashboard');
+      } else {
+        router.push('/student/onboarding');
+      }
+
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError(err.response?.data?.error || err.response?.data?.message || 'Invalid credentials. Please try again.');
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred during login.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -45,20 +71,18 @@ export default function LoginPage() {
       
       {/* Left Column - Branding Banner (Hidden on mobile) */}
       <div className="hidden lg:flex lg:w-5/12 bg-[#0015A4] text-white flex-col justify-between relative overflow-hidden px-12 pt-12">
-        {/* Abstract Background Shapes (Optional CSS decoration based on mockup) */}
         <div className="absolute bottom-0 left-0 w-full h-[60%] bg-gradient-to-t from-blue-900/50 to-transparent z-0"></div>
         
         <div className="z-10">
           <div className="flex items-center gap-3">
-            {/* Logo Icon SVG */}
-           <Image
-  src="/siwesflow_logo.png"
-  alt="SIWESFlow"
-  width={240}
-  height={75}
-  className="h-auto w-[240px] object-contain"
-  priority
-/>
+            <Image 
+              src="/siwesflow_logo.png" 
+              alt="SIWESFlow" 
+              width={240} 
+              height={75} 
+              className="h-auto w-[240px] object-contain" 
+              priority 
+            />
           </div>
 
           <div className="mt-20">
@@ -75,18 +99,15 @@ export default function LoginPage() {
 
         {/* Student Image & Footer */}
         <div className="z-1 mt-auto relative">
-          {/* REPLACE this src with your actual student asset from the public folder (e.g., "/student-hero.png") */}
           <div className="h-64 w-full relative mt-8">
-           <div className="h-96 w-full relative mt-8">
-  <Image
-    src="/login-image.png"
-    alt="SIWESFlow"
-    width={400}
-    height={400}
-    className="absolute bottom-0 left-0 w-full h-auto object-contain object-bottom"
-    priority
-  />
-</div>
+            <Image 
+              src="/login-image.png" 
+              alt="SIWESFlow Student" 
+              width={400} 
+              height={400} 
+              className="absolute bottom-0 left-0 w-full h-auto object-contain object-bottom" 
+              priority 
+            />
           </div>
           <div className="pb-8 pt-4 border-t border-blue-800/50 relative z-20">
             <p className="text-xs text-blue-100">Powered by Enchanted Digital Academy</p>
@@ -125,7 +146,7 @@ export default function LoginPage() {
                   required
                   value={formData.email}
                   onChange={handleChange}
-                  className="block w-full pl-11 py-3 text-sm border border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
+                  className="block w-full pl-11 py-3 text-sm border text-slate-700 border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
                   placeholder="e.g you@example.com"
                 />
               </div>
@@ -146,7 +167,7 @@ export default function LoginPage() {
                   required
                   value={formData.password}
                   onChange={handleChange}
-                  className="block w-full pl-11 pr-11 py-3 text-sm border border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
+                  className="block w-full pl-11 pr-11 py-3 text-sm border text-slate-700 border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
                   placeholder="enter your password"
                 />
                 <button
@@ -199,7 +220,6 @@ export default function LoginPage() {
                 type="button"
                 className="w-full flex justify-center items-center py-3 px-4 border border-slate-300 rounded-lg shadow-sm bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
               >
-                {/* Google Icon SVG */}
                 <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -212,8 +232,8 @@ export default function LoginPage() {
           </div>
 
           <p className="mt-8 text-center text-sm text-slate-600">
-            Don't have an account?{' '}
-            <Link href="/auth/register" className="font-medium text-[#0015A4] hover:underline">
+            Don&apos;t have an account?{' '}
+            <Link className="font-medium text-[#0015A4] hover:underline" href="/auth/register">
               Sign up
             </Link>
           </p>

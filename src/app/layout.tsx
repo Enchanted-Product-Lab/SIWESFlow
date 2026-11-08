@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SIWESFlow",
   description: "Digital SIWES management and work-experience verification platform",
-  icons: {
+ icons: {
     icon: "/favicon.png", // This points directly to public/favicon.png
   },
 };

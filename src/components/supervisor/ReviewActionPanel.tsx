@@ -1,12 +1,11 @@
 "use client";
 
 import React, { useState } from 'react';
-import { CheckCircle, XCircle, AlertCircle, MessageSquare, Star } from 'lucide-react';
+import { CheckCircle, AlertCircle, MessageSquare, Star } from 'lucide-react';
 
-// 1. Updated to match the new UPPERCASE backend specs
 export interface ReviewActionPayload {
   activityId: string;
-  action: 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION';
+  action: 'APPROVED' | 'NEEDS_REVISION';
   feedback: string;
   rating?: number;
 }
@@ -14,7 +13,7 @@ export interface ReviewActionPayload {
 interface ReviewActionPanelProps {
   activityId: string;
   studentName: string;
-  currentStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION';
+  currentStatus: 'PENDING' | 'APPROVED' | 'NEEDS_REVISION' | 'REJECTED';
   onSubmitReview: (payload: ReviewActionPayload) => void; 
 }
 
@@ -28,27 +27,28 @@ export default function ReviewActionPanel({
   const [rating, setRating] = useState<number>(0);
   const [hoveredRating, setHoveredRating] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleAction = (actionType: 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION') => {
-    if ((actionType === 'REJECTED' || actionType === 'NEEDS_REVISION') && !feedback.trim()) {
-      alert('Feedback is required for rejections or correction requests.');
+  const handleAction = (actionType: 'APPROVED' | 'NEEDS_REVISION') => {
+    setErrorMsg('');
+    if (actionType === 'NEEDS_REVISION' && !feedback.trim()) {
+      setErrorMsg('Constructive feedback is required when requesting revision.');
       return;
     }
 
     setIsSubmitting(true);
     
-    // 2. Build the payload to perfectly match the interface
     const payload: ReviewActionPayload = {
       activityId,
       action: actionType,
-      feedback,
+      feedback: feedback.trim(),
       ...(actionType === 'APPROVED' && rating > 0 ? { rating } : {})
     };
 
     setTimeout(() => {
       onSubmitReview(payload);
       setIsSubmitting(false);
-    }, 800);
+    }, 600);
   };
 
   if (currentStatus !== 'PENDING') {
@@ -64,7 +64,7 @@ export default function ReviewActionPanel({
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
-        <MessageSquare size={18} className="text-siwes-blue" />
+        <MessageSquare size={18} className="text-teal-600" />
         <h3 className="text-lg font-bold text-slate-900">Supervisor Evaluation</h3>
       </div>
 
@@ -93,7 +93,7 @@ export default function ReviewActionPanel({
               </button>
             ))}
             <span className="ml-3 text-sm text-slate-500 font-medium">
-              {rating > 0 ? `${rating} / 5 Stars` : 'Select rating'}
+              {rating > 0 ? `${rating} / 5 Stars` : 'Select rating (optional)'}
             </span>
           </div>
         </div>
@@ -108,16 +108,19 @@ export default function ReviewActionPanel({
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
             placeholder={`Leave comments for ${studentName} regarding this logbook entry...`}
-            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-siwes-blue focus:border-siwes-blue outline-none transition-all resize-none"
+            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all resize-none text-slate-900"
           />
+          {errorMsg && (
+            <p className="text-xs text-rose-600 mt-2 font-medium">{errorMsg}</p>
+          )}
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Buttons: strictly APPROVED and NEEDS_REVISION per TRD spec */}
         <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-3">
           <button
             onClick={() => handleAction('APPROVED')}
-            disabled={isSubmitting || rating === 0}
-            className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50"
+            disabled={isSubmitting}
+            className="flex-1 flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50"
           >
             <CheckCircle size={18} /> Approve Log
           </button>
@@ -127,15 +130,7 @@ export default function ReviewActionPanel({
             disabled={isSubmitting}
             className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50"
           >
-            <AlertCircle size={18} /> Request Correction
-          </button>
-
-          <button
-            onClick={() => handleAction('REJECTED')}
-            disabled={isSubmitting}
-            className="flex-1 flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <XCircle size={18} /> Reject Completely
+            <AlertCircle size={18} /> Request Revision
           </button>
         </div>
       </div>

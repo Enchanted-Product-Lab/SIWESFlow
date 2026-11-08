@@ -1,144 +1,174 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
 import { mockActivityLogs, mockStudents } from "@/data/mock";
-
-const totalStudents = mockStudents.length;
-
-const placedStudents = mockStudents.filter(
-  (student) => student.placementCompany.trim().length > 0,
-).length;
-
-const unplacedStudents = totalStudents - placedStudents;
-
-const activeStudentIds = new Set(
-  mockActivityLogs.map((activityLog) => activityLog.studentId),
-);
-
-const activeStudents = mockStudents.filter((student) =>
-  activeStudentIds.has(student.id),
-).length;
-
-// The current mock Student type does not contain these fields yet.
-const atRiskStudents = 0;
-const completedStudents = 0;
-
-const placementCoverage =
-  totalStudents > 0 ? Math.round((placedStudents / totalStudents) * 100) : 0;
-
-const dashboardMetrics = [
-  {
-    label: "Total Students",
-    value: totalStudents,
-    description: "Students registered",
-    href: "/school/students",
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        className="h-5 w-5"
-      >
-        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    ),
-  },
-  {
-    label: "Placed Students",
-    value: placedStudents,
-    description: "Students with placements",
-    href: "/school/placements",
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        className="h-5 w-5"
-      >
-        <rect x="3" y="7" width="18" height="13" rx="2" />
-        <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-      </svg>
-    ),
-  },
-  {
-    label: "Unplaced Students",
-    value: unplacedStudents,
-    description: "Students needing placement",
-    href: "/school/students",
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        className="h-5 w-5"
-      >
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 8v4" />
-        <path d="M12 16h.01" />
-      </svg>
-    ),
-  },
-  {
-    label: "Active Students",
-    value: activeStudents,
-    description: "Students with activity",
-    href: "/school/activity-monitoring",
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        className="h-5 w-5"
-      >
-        <path d="M3 12h4l2-7 4 14 2-7h6" />
-      </svg>
-    ),
-  },
-  {
-    label: "At-Risk Students",
-    value: atRiskStudents,
-    description: "Requires attention",
-    href: "/school/activity-monitoring",
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        className="h-5 w-5"
-      >
-        <path d="M12 3 2.5 20h19L12 3Z" />
-        <path d="M12 9v5" />
-        <path d="M12 17h.01" />
-      </svg>
-    ),
-  },
-  {
-    label: "Completed Students",
-    value: completedStudents,
-    description: "Verified completions",
-    href: "/school/students",
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        className="h-5 w-5"
-      >
-        <path d="M20 6 9 17l-5-5" />
-      </svg>
-    ),
-  },
-];
+import { Student, ActivityLog } from "@/types";
+import { fetchStudentsWithFallback, fetchActivitiesWithFallback } from "@/services/schoolService";
 
 export default function SchoolDashboardPage() {
+  const [students, setStudents] = useState<Student[]>(mockStudents);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(mockActivityLogs);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      try {
+        const [liveStudents, liveLogs] = await Promise.all([
+          fetchStudentsWithFallback(),
+          fetchActivitiesWithFallback(),
+        ]);
+        if (isMounted) {
+          setStudents(liveStudents);
+          setActivityLogs(liveLogs);
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const totalStudents = students.length;
+
+  const placedStudents = students.filter(
+    (student) => student.placementCompany.trim().length > 0,
+  ).length;
+
+  const unplacedStudents = totalStudents - placedStudents;
+
+  const activeStudentIds = new Set(
+    activityLogs.map((activityLog) => activityLog.studentId),
+  );
+
+  const activeStudents = students.filter((student) =>
+    activeStudentIds.has(student.id),
+  ).length;
+
+  const atRiskStudents = 0;
+  const completedStudents = 0;
+
+  const placementCoverage =
+    totalStudents > 0 ? Math.round((placedStudents / totalStudents) * 100) : 0;
+
+  const dashboardMetrics = [
+    {
+      label: "Total Students",
+      value: totalStudents,
+      description: "Students registered",
+      href: "/school/students",
+      icon: (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          className="h-5 w-5"
+        >
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      ),
+    },
+    {
+      label: "Placed Students",
+      value: placedStudents,
+      description: "Students with placements",
+      href: "/school/placements",
+      icon: (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          className="h-5 w-5"
+        >
+          <rect x="3" y="7" width="18" height="13" rx="2" />
+          <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </svg>
+      ),
+    },
+    {
+      label: "Unplaced Students",
+      value: unplacedStudents,
+      description: "Students needing placement",
+      href: "/school/students",
+      icon: (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          className="h-5 w-5"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 8v4" />
+          <path d="M12 16h.01" />
+        </svg>
+      ),
+    },
+    {
+      label: "Active Students",
+      value: activeStudents,
+      description: "Students with activity",
+      href: "/school/activity-monitoring",
+      icon: (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          className="h-5 w-5"
+        >
+          <path d="M3 12h4l2-7 4 14 2-7h6" />
+        </svg>
+      ),
+    },
+    {
+      label: "At-Risk Students",
+      value: atRiskStudents,
+      description: "Requires attention",
+      href: "/school/activity-monitoring",
+      icon: (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          className="h-5 w-5"
+        >
+          <path d="M12 3 2.5 20h19L12 3Z" />
+          <path d="M12 9v5" />
+          <path d="M12 17h.01" />
+        </svg>
+      ),
+    },
+    {
+      label: "Completed Students",
+      value: completedStudents,
+      description: "Verified completions",
+      href: "/school/students",
+      icon: (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          className="h-5 w-5"
+        >
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      ),
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-[#f7f8fc] text-[#10195c]">
       <SchoolNavigation />
@@ -153,6 +183,9 @@ export default function SchoolDashboardPage() {
           </div>
 
           <div className="flex items-center gap-4">
+            {isLoading && (
+              <span className="text-xs text-slate-400 animate-pulse">Syncing...</span>
+            )}
             {/* Notifications */}
             <button
               type="button"
@@ -307,7 +340,7 @@ export default function SchoolDashboardPage() {
 
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                   <div className="divide-y divide-slate-100">
-                    {mockStudents.slice(0, 3).map((student) => {
+                    {students.slice(0, 3).map((student) => {
                       const hasActivity = activeStudentIds.has(student.id);
 
                       return (

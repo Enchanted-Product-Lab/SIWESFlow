@@ -1,7 +1,12 @@
+"use client";
+
 import Link from "next/link";
 
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
+import { useEffect, useMemo, useState } from "react";
 import { mockActivityLogs, mockStudents } from "@/data/mock";
+import { ActivityLog, Student } from "@/types";
+import { fetchActivitiesWithFallback, fetchStudentsWithFallback } from "@/services/schoolService";
 
 const statusStyles = {
   pending: {
@@ -27,35 +32,85 @@ const statusStyles = {
 } as const;
 
 export default function SchoolActivityMonitoringPage() {
-  const totalActivities = mockActivityLogs.length;
+  const [activities, setActivities] = useState<ActivityLog[]>(mockActivityLogs);
+  const [students, setStudents] = useState<Student[]>(mockStudents);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [isLoading, setIsLoading] = useState(true);
 
-  const pendingActivities = mockActivityLogs.filter(
+  useEffect(() => {
+    let isMounted = true;
+    async function load() {
+      try {
+        const [liveActivities, liveStudents] = await Promise.all([
+          fetchActivitiesWithFallback(),
+          fetchStudentsWithFallback(),
+        ]);
+        if (isMounted) {
+          setActivities(liveActivities);
+          setStudents(liveStudents);
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    load();
+    return () => { isMounted = false; };
+  }, []);
+
+  const totalActivities = activities.length;
+
+  const pendingActivities = activities.filter(
     (activityLog) => activityLog.status === "pending",
   ).length;
 
-  const approvedActivities = mockActivityLogs.filter(
+  const approvedActivities = activities.filter(
     (activityLog) => activityLog.status === "approved",
   ).length;
 
-  const totalHours = mockActivityLogs.reduce(
+  const totalHours = activities.reduce(
     (total, activityLog) => total + activityLog.hoursWorked,
     0,
   );
 
-  const activeStudentIds = new Set(
-    mockActivityLogs.map((activityLog) => activityLog.studentId),
+  const activeStudentIds = useMemo(
+    () => new Set(activities.map((activityLog) => activityLog.studentId)),
+    [activities]
   );
 
-  const studentsWithActivity = mockStudents.filter((student) =>
+  const studentsWithActivity = students.filter((student) =>
     activeStudentIds.has(student.id),
   ).length;
 
-  const studentsWithoutActivity = mockStudents.filter(
+  const studentsWithoutActivity = students.filter(
     (student) => !activeStudentIds.has(student.id),
   );
 
   const getStudent = (studentId: string) =>
-    mockStudents.find((student) => student.id === studentId);
+    students.find((student) => student.id === studentId) || {
+      id: studentId,
+      name: "Student " + studentId,
+      matricNumber: "MAT/2026",
+      university: "Institution",
+      department: "SIWES Department",
+      level: "300 Level",
+      placementCompany: "Placement Company",
+    };
+
+  const filteredActivities = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return activities.filter((log) => {
+      if (statusFilter !== "all" && log.status !== statusFilter) return false;
+      if (!q) return true;
+      const student = getStudent(log.studentId);
+      return (
+        log.title.toLowerCase().includes(q) ||
+        log.description.toLowerCase().includes(q) ||
+        student.name.toLowerCase().includes(q) ||
+        student.matricNumber.toLowerCase().includes(q)
+      );
+    });
+  }, [activities, students, searchQuery, statusFilter]);
 
   return (
     <div className="min-h-screen bg-[#f7f8fc] text-[#10195c]">
@@ -330,19 +385,16 @@ export default function SchoolActivityMonitoringPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-[#7b83e8] hover:text-[#1729c7]"
-                  >
-                    Status
-                  </button>
-
-                  <button
-                    type="button"
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-[#7b83e8] hover:text-[#1729c7]"
-                  >
-                    Student
-                  </button>
+                  {['all', 'pending', 'approved', 'rejected', 'revision_requested'].map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setStatusFilter(st)}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium capitalize transition ${statusFilter === st ? "border-[#1729c7] bg-[#eef0ff] text-[#1729c7]" : "border-slate-200 bg-white text-slate-600 hover:border-[#7b83e8]"}`}
+                    >
+                      {st.replace('_', ' ')}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -378,14 +430,14 @@ export default function SchoolActivityMonitoringPage() {
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
-                    {mockActivityLogs.map((activityLog) => {
+                    {filteredActivities.map((activityLog) => {
                       const student = getStudent(activityLog.studentId);
 
                       if (!student) {
                         return null;
                       }
 
-                      const status = statusStyles[activityLog.status];
+                      const status = (statusStyles as any)[activityLog.status] || statusStyles.pending;
 
                       const initials = student.name
                         .split(" ")
@@ -466,7 +518,7 @@ export default function SchoolActivityMonitoringPage() {
 
               {/* Mobile cards */}
               <div className="divide-y divide-slate-100 md:hidden">
-                {mockActivityLogs.map((activityLog) => {
+                {filteredActivities.map((activityLog) => {
                   const student = getStudent(activityLog.studentId);
 
                   if (!student) {
@@ -586,7 +638,7 @@ export default function SchoolActivityMonitoringPage() {
                 </p>
 
                 <p className="text-xs text-slate-400">
-                  {studentsWithActivity} of {mockStudents.length} students
+                  {studentsWithActivity} of {students.length} students
                   active
                 </p>
               </div>
