@@ -46,7 +46,7 @@ export default function StudentDashboardPage() {
         // Fetch activities
         const actRes = await apiClient.get("/activities");
         if (Array.isArray(actRes.data) && actRes.data.length > 0) {
-          const hours = actRes.data.reduce((sum: number, a: any) => sum + (Number(a.hoursWorked) || 0), 0);
+          const hours = actRes.data.reduce((sum: number, a: { hoursWorked?: string | number }) => sum + (Number(a.hoursWorked) || 0), 0);
           const pct = Math.min(100, Math.max(10, Math.round((hours / 480) * 100)));
           setStats((prev) => ({
             ...prev,

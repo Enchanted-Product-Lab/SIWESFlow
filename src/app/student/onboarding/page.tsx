@@ -13,10 +13,11 @@ export default function StudentOnboarding() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   
-  // Updated data model to include all fields from the mockup + PRD requirements
+  // Updated data model to match the backend contract (firstName, lastName, matriculationNumber)
   const [formData, setFormData] = useState({
-    fullName: '',
-    matricNumber: '',
+    firstName: '',
+    lastName: '',
+    matriculationNumber: '',
     phoneNumber: '',
     department: '',
     level: '300',
@@ -24,25 +25,47 @@ export default function StudentOnboarding() {
     siwesEndDate: ''
   });
 
-  useEffect(() => {
+  // State to hold the single input for "Full Name" before splitting it
+  const [fullNameInput, setFullNameInput] = useState('');
+
+ useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedName = localStorage.getItem('siwesflow_pending_name');
       if (savedName) {
-        setFormData((prev) => ({ ...prev, fullName: savedName }));
+        // Schedule the state update safely outside the current render cycle
+        setTimeout(() => {
+          setFullNameInput(savedName);
+        }, 0);
       }
     }
   }, []);
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
   };
 
+  const handleFullNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFullNameInput(e.target.value);
+    setError('');
+  };
+
   const handleNext = () => {
-    if (!formData.fullName || !formData.matricNumber || !formData.phoneNumber) {
+    if (!fullNameInput || !formData.matriculationNumber || !formData.phoneNumber) {
       setError('Please fill in all details to continue.');
       return;
     }
+    
+    // Split the full name into first and last name for the backend payload
+    const nameParts = fullNameInput.trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+    
+    setFormData(prev => ({
+        ...prev,
+        firstName,
+        lastName
+    }));
+
     setError('');
     setStep(2);
   };
@@ -58,8 +81,8 @@ export default function StudentOnboarding() {
     setError('');
 
     try {
-      // Send the completed profile data to the backend
-      await apiClient.put('/student/profile', formData);
+      // Send the completed profile data to the updated backend endpoint
+      await apiClient.patch('/students/me', formData);
       
       // Once onboarding is saved, route them to the document upload step
       router.push('/student/documents/upload');
@@ -113,7 +136,7 @@ export default function StudentOnboarding() {
 
           <form onSubmit={step === 2 ? handleSubmit : (e) => { e.preventDefault(); handleNext(); }}>
             
-            {/* Step 1 Fields (Matching the Mockup) */}
+            {/* Step 1 Fields */}
             {step === 1 && (
               <div className="space-y-5 animate-in fade-in slide-in-from-left-4 duration-500">
                 
@@ -124,11 +147,11 @@ export default function StudentOnboarding() {
                       <User className="h-5 w-5 text-slate-300" />
                     </div>
                     <input
-                      name="fullName"
+                      name="fullNameInput"
                       type="text"
                       required
-                      value={formData.fullName}
-                      onChange={handleChange}
+                      value={fullNameInput}
+                      onChange={handleFullNameChange}
                       className="block w-full pl-10 pr-4 py-3 text-sm border border-slate-200 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors bg-white outline-none"
                       placeholder="enter your full name"
                     />
@@ -142,10 +165,10 @@ export default function StudentOnboarding() {
                       <BookOpen className="h-5 w-5 text-slate-300" />
                     </div>
                     <input
-                      name="matricNumber"
+                      name="matriculationNumber"
                       type="text"
                       required
-                      value={formData.matricNumber}
+                      value={formData.matriculationNumber}
                       onChange={handleChange}
                       className="block w-full pl-10 pr-4 py-3 text-sm border border-slate-200 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors bg-white outline-none"
                       placeholder="enter your matric number"
@@ -180,7 +203,7 @@ export default function StudentOnboarding() {
               </div>
             )}
 
-            {/* Step 2 Fields (SIWES & Department) */}
+            {/* Step 2 Fields */}
             {step === 2 && (
               <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-500">
                 
@@ -278,7 +301,7 @@ export default function StudentOnboarding() {
           </form>
         </div>
 
-        {/* Right Column - Highlight Box (Matching Mockup) */}
+        {/* Right Column - Highlight Box */}
         <div className="hidden md:flex w-full md:w-1/2 min-h-[450px] bg-[#EEF2FF] rounded-2xl p-12 lg:p-16 flex-col justify-center shadow-inner border border-[#E0E7FF]">
           <h2 className="text-[#0015A4] text-5xl lg:text-6xl font-extrabold leading-[1.15] tracking-tight">
             Join 500+<br />

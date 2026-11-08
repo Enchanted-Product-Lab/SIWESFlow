@@ -169,7 +169,7 @@ export default function RegisterPage() {
                       required
                       value={formData.fullName}
                       onChange={handleChange}
-                      className="block w-full pl-11 py-3 text-sm border border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
+                      className="block w-full pl-11 py-3 text-sm border text-slate-700 border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
                       placeholder="e.g. David Ibrahim"
                     />
                   </div>
@@ -190,7 +190,7 @@ export default function RegisterPage() {
                       required
                       value={formData.email}
                       onChange={handleChange}
-                      className="block w-full pl-11 py-3 text-sm border border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
+                      className="block w-full text-slate-600 pl-11 py-3 text-sm border border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
                       placeholder="you@example.com"
                     />
                   </div>
@@ -211,7 +211,7 @@ export default function RegisterPage() {
                       required
                       value={formData.password}
                       onChange={handleChange}
-                      className="block w-full pl-11 pr-11 py-3 text-sm border border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
+                      className="block w-full pl-11 pr-11 py-3 text-sm border border-slate-300 rounded-lg text-slate-600 focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
                       placeholder="Create a password (min. 12 chars)"
                     />
                     <button
@@ -243,7 +243,7 @@ export default function RegisterPage() {
                       required
                       value={formData.confirmPassword}
                       onChange={handleChange}
-                      className="block w-full pl-11 py-3 text-sm border border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
+                      className="block w-full pl-11 py-3 text-sm border text-slate-700 border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
                       placeholder="Confirm your password"
                     />
                   </div>

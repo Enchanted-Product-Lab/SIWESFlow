@@ -146,7 +146,7 @@ export default function LoginPage() {
                   required
                   value={formData.email}
                   onChange={handleChange}
-                  className="block w-full pl-11 py-3 text-sm border border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
+                  className="block w-full pl-11 py-3 text-sm border text-slate-700 border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
                   placeholder="e.g you@example.com"
                 />
               </div>
