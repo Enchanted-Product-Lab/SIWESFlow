@@ -25,16 +25,13 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Global error handling
+// Global error handling: pass error down to components so they can fall back gracefully
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Don't auto-redirect if we are already on an auth page
-      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/auth/')) {
-        localStorage.removeItem('siwesflow_token');
-        window.location.href = '/auth/login';
-      }
+    if (error.response?.status === 401 && typeof window !== 'undefined') {
+      // Clear expired or invalid token
+      localStorage.removeItem('siwesflow_token');
     }
     return Promise.reject(error);
   }
