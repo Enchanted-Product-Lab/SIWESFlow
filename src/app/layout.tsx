@@ -15,6 +15,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SIWESFlow",
   description: "Digital SIWES management and work-experience verification platform",
+  icons: {
+    icon: "/siwesflow_logo.png",
+    shortcut: "/siwesflow_logo.png",
+    apple: "/siwesflow_logo.png",
+  },
 };
 
 export default function RootLayout({
