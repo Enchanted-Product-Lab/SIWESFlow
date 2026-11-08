@@ -26,7 +26,7 @@ function VerifyEmailContent() {
 
     async function verify() {
       try {
-        await apiClient.get(`/auth/verify-email?token=${encodeURIComponent(token as string)}`);
+        await apiClient.post('/auth/verify-email', { token });
         if (isMounted) {
           setStatus('success');
         }
