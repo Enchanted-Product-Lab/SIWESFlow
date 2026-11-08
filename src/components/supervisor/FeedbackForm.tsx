@@ -17,13 +17,19 @@ export default function FeedbackForm({ activityId }: FeedbackFormProps) {
   const [errorMessage, setErrorMessage] = useState("");
 
   const submitReview = async (status: "APPROVED" | "NEEDS_REVISION") => {
-    setIsSubmitting(true);
     setErrorMessage("");
 
-    const payload = {
+    if (status === "NEEDS_REVISION" && !feedback.trim()) {
+      setErrorMessage("Please provide feedback explaining what needs revision.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const payload: { status: "APPROVED" | "NEEDS_REVISION"; comment?: string; rating?: number } = {
       status,
-      rating: status === "APPROVED" ? 5 : 3,
-      comment: feedback.trim() || (status === "APPROVED" ? "Activity approved without remarks." : "Please revise with more technical details."),
+      comment: feedback.trim() || (status === "APPROVED" ? "Activity approved without remarks." : undefined),
+      ...(status === "APPROVED" ? { rating: 5 } : {}),
     };
 
     try {
