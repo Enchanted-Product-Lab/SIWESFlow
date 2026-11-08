@@ -96,7 +96,7 @@ export default async function ActivityReviewPage({
           </div>
 
           {/* Supervisor Action Card (Client Component) */}
-          <FeedbackForm />
+          <FeedbackForm activityId={activityId} />
 
         </div>
       </div>
