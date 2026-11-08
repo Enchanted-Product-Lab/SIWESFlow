@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { User, Phone, BookOpen, Building2, GraduationCap, Calendar, Loader2 } from 'lucide-react';
@@ -23,6 +23,15 @@ export default function StudentOnboarding() {
     siwesStartDate: '',
     siwesEndDate: ''
   });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedName = localStorage.getItem('siwesflow_pending_name');
+      if (savedName) {
+        setFormData((prev) => ({ ...prev, fullName: savedName }));
+      }
+    }
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -50,13 +59,13 @@ export default function StudentOnboarding() {
 
     try {
       // Send the completed profile data to the backend
-      await apiClient.put('/api/student/profile', formData);
+      await apiClient.put('/student/profile', formData);
       
       // Once onboarding is saved, route them to the document upload step
       router.push('/student/documents/upload');
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.message || 'Failed to save profile. Please try again.');
+        setError(err.response?.data?.error || err.response?.data?.message || 'Failed to save profile. Please try again.');
       } else if (err instanceof Error) {
         setError(err.message);
       } else {

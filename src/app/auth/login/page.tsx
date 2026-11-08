@@ -36,23 +36,26 @@ export default function LoginPage() {
         password: formData.password
       });
 
-      const { token, user } = response.data;
+      const authToken = response.data?.accessToken || response.data?.token;
+      const user = response.data?.user;
 
       // Store token using the exact key expected by our apiClient interceptor
-      localStorage.setItem('siwesflow_token', token);
+      if (authToken) {
+        localStorage.setItem('siwesflow_token', authToken);
+      }
 
-      // Route based on RBAC roles (fallback to student dashboard if undefined)
+      // Route based on RBAC roles (fallback to student onboarding/dashboard)
       if (user?.role === 'SUPERVISOR') {
         router.push('/supervisor/dashboard');
-      } else if (user?.role === 'SCHOOL') {
+      } else if (user?.role === 'SCHOOL_COORDINATOR' || user?.role === 'SCHOOL') {
         router.push('/school/dashboard');
       } else {
-        router.push('/student/dashboard');
+        router.push('/student/onboarding');
       }
 
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.message || 'Invalid credentials. Please try again.');
+        setError(err.response?.data?.error || err.response?.data?.message || 'Invalid credentials. Please try again.');
       } else if (err instanceof Error) {
         setError(err.message);
       } else {

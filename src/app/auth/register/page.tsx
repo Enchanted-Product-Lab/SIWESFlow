@@ -37,19 +37,21 @@ export default function RegisterPage() {
       return;
     }
     
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters long.');
+    if (formData.password.length < 12) {
+      setError('Password must be at least 12 characters long.');
       setIsLoading(false);
       return;
     }
 
     try {
+      if (formData.fullName && typeof window !== 'undefined') {
+        localStorage.setItem('siwesflow_pending_name', formData.fullName);
+      }
+
       // Live API call to the backend staging server
       await apiClient.post('/auth/register', {
-        name: formData.fullName,
         email: formData.email,
         password: formData.password,
-        role: 'STUDENT' // Defaulting to student for public registration
       });
 
       // If the request succeeds without throwing an error, trigger the success screen
@@ -57,7 +59,7 @@ export default function RegisterPage() {
 
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.message || 'Registration failed. Please try again.');
+        setError(err.response?.data?.error || err.response?.data?.message || 'Registration failed. Please try again.');
       } else if (err instanceof Error) {
         setError(err.message);
       } else {
@@ -210,7 +212,7 @@ export default function RegisterPage() {
                       value={formData.password}
                       onChange={handleChange}
                       className="block w-full pl-11 pr-11 py-3 text-sm border border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
-                      placeholder="Create a password (min. 8 chars)"
+                      placeholder="Create a password (min. 12 chars)"
                     />
                     <button
                       type="button"

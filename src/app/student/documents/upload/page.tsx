@@ -51,9 +51,19 @@ export default function DocumentUpload() {
     setSuccessMsg('');
 
     try {
+      const typeMap: Record<string, string> = {
+        PASSPORT: 'PASSPORT_PHOTO',
+        STUDENT_ID: 'STUDENT_ID_CARD',
+        ACCEPTANCE_LETTER: 'ACCEPTANCE_LETTER',
+        PLACEMENT_LETTER: 'PLACEMENT_LETTER',
+        SCHOOL_INTRO: 'SCHOOL_INTRO_LETTER',
+      };
+      const normalizedDocType = typeMap[documentType] || documentType;
+
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('documentType', documentType);
+      formData.append('documentType', normalizedDocType);
+      formData.append('ownerType', 'student');
 
       // Sending file to the live backend POST /documents endpoint
       await apiClient.post('/documents', formData, {
@@ -68,7 +78,7 @@ export default function DocumentUpload() {
       
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.message || 'Failed to upload document. Please try again.');
+        setError(err.response?.data?.error || err.response?.data?.message || 'Failed to upload document. Please try again.');
       } else if (err instanceof Error) {
         setError(err.message);
       } else {
