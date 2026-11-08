@@ -23,4 +23,4 @@ The Digital Logbook is a feature of SIWESFlow that helps students record and tra
 The Digital Logbook frontend has been implemented and tested. Backend integration is the next stage.
 
 ## Contributor
-Digital Logbook – Dev 3
+kristie – Frontend Dev 3
