@@ -9,7 +9,7 @@ export interface AssignedStudent {
   name: string;
   department: string;
   level: string;
-  status: 'Active' | 'Pending Review' | 'Flagged';
+  status: 'Active' | 'Pending Review' | 'At Risk';
   lastLogDate: string;
 }
 
@@ -37,8 +37,8 @@ export default function AssignedStudentTable({ students }: AssignedStudentTableP
         return <span className="px-2.5 py-1 text-xs font-medium bg-teal-50 text-teal-700 rounded-full border border-teal-100">Active</span>;
       case 'Pending Review':
         return <span className="px-2.5 py-1 text-xs font-medium bg-amber-50 text-amber-700 rounded-full border border-amber-100">Pending</span>;
-      case 'Flagged':
-        return <span className="px-2.5 py-1 text-xs font-medium bg-rose-50 text-rose-700 rounded-full border border-rose-100 flex items-center gap-1 w-fit"><AlertCircle size={12} /> Flagged</span>;
+      case 'At Risk':
+        return <span className="px-2.5 py-1 text-xs font-medium bg-rose-50 text-rose-700 rounded-full border border-rose-100 flex items-center gap-1 w-fit"><AlertCircle size={12} /> At Risk</span>;
     }
   };
 
@@ -70,7 +70,7 @@ export default function AssignedStudentTable({ students }: AssignedStudentTableP
               <option value="All">All Statuses</option>
               <option value="Active">Active</option>
               <option value="Pending Review">Pending Review</option>
-              <option value="Flagged">Flagged</option>
+              <option value="At Risk">At Risk</option>
             </select>
           </div>
         </div>

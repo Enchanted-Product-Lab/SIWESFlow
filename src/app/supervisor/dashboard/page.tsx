@@ -1,9 +1,8 @@
 "use client";
 
-import Link from 'next/link';
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Menu } from 'lucide-react';
-import Sidebar from '../../../components/supervisor/Sidebar';
 import DashboardMetrics from '../../../components/supervisor/DashboardMetrics';
 import RecentActivityTable from '../../../components/supervisor/RecentActivityTable';
 import { mockStudents, mockActivityLogs } from '../../../data/mock';
@@ -38,27 +37,17 @@ export default function SupervisorDashboard() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans overflow-hidden">
-      
-      {/* 1. Mobile Backdrop Overlay */}
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-slate-900/50 z-20 md:hidden backdrop-blur-sm transition-opacity"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
+    <div className="min-h-screen bg-slate-50 pb-12 font-sans">
+      <header className="bg-white border-b border-slate-200 px-6 py-8 shadow-sm">
+        <div className="max-w-7xl mx-auto">
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Cohort Overview</h1>
+          <p className="text-slate-600 mt-2 text-sm md:text-base">
+            Track engagement, monitor hours, and manage your assigned SIWES students.
+          </p>
+        </div>
+      </header>
 
-      {/* 2. The Sidebar (Off-canvas on mobile, fixed on desktop) */}
-      <div 
-        className={`fixed inset-y-0 left-0 z-30 transform md:relative md:translate-x-0 transition-transform duration-300 ease-in-out flex-shrink-0 ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <Sidebar />
-      </div>
-
-      {/* 3. Main Content Area */}
-      <main className="flex-1 flex flex-col h-screen overflow-y-auto w-full">
+      <main className="max-w-7xl mx-auto px-6 mt-8 space-y-8">
         
         {/* Mobile-Only Header */}
         <div className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">

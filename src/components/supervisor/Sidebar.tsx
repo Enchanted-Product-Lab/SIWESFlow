@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Users, FileText } from 'lucide-react';
 
@@ -12,11 +13,18 @@ export default function Sidebar() {
   const isActive = (path: string) => pathname === path;
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col min-h-screen">
+    <aside className="w-64 bg-siwes-blue text-slate-300 flex flex-col min-h-screen">
       <div className="h-16 flex items-center px-6 border-b border-slate-800">
-  <Link href="/supervisor" className="text-white text-xl font-bold tracking-wide hover:opacity-80 transition-opacity">
-    SIWES<span className="text-teal-500">Flow</span>
-  </Link>
+   <Link href="/supervisor/dashboard" className="transition-opacity hover:opacity-80">
+          <Image 
+            src="/SIWESFlow_logo.png" 
+            alt="SIWESFlow Logo" 
+            width={140} 
+            height={40} 
+            className="object-contain brightness-0 invert" 
+            priority
+          />
+        </Link>
 </div>
       
       <nav className="flex-1 p-4 space-y-2">
@@ -24,7 +32,7 @@ export default function Sidebar() {
           href="/supervisor/dashboard" 
           className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
             isActive('/supervisor/dashboard') 
-              ? 'bg-teal-600/10 text-teal-400' 
+              ? 'bg-active-blue' 
               : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -37,7 +45,7 @@ export default function Sidebar() {
           href="/supervisor/students" 
           className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
             isActive('/supervisor/students') 
-              ? 'bg-teal-600/10 text-teal-400' 
+              ? 'bg-active-blue' 
               : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -49,7 +57,7 @@ export default function Sidebar() {
           href="/supervisor/reviews" 
           className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
             isActive('/supervisor/reviews') 
-              ? 'bg-teal-600/10 text-teal-400' 
+              ? 'bg-active-blue' 
               : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
           }`}
         >

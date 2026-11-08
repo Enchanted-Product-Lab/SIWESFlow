@@ -1,6 +1,7 @@
 "use client";
 
 import Link from 'next/link';
+import Image from 'next/image';
 import React, { useState } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from '../../../components/supervisor/Sidebar';
@@ -10,7 +11,7 @@ import { mockStudents, mockActivityLogs } from '../../../data/mock';
 export default function StudentsPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Transform your existing mock data to fit the table's expected interface
+  // Transform mock data to fit the table's expected interface
   const tableData: AssignedStudent[] = mockStudents.map((student) => {
     // Get all logs for this specific student
     const studentLogs = mockActivityLogs.filter((log) => log.studentId === student.id);
@@ -18,15 +19,24 @@ export default function StudentsPage() {
     // Find the most recent log date
     const latestLog = studentLogs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
     
-    // Determine status based on whether they have pending logs
+    // Calculate metrics for status determination
     const hasPendingLogs = studentLogs.some((log) => log.status === 'pending');
+    const hasApprovedHours = studentLogs.some((log) => log.status === 'approved' && log.hoursWorked > 0);
+
+    // CORRECTED PRIORITY: Pending Review > At Risk > Active
+    let currentStatus = 'Active';
+    if (hasPendingLogs) {
+      currentStatus = 'Pending Review'; // Top priority: requires supervisor action
+    } else if (!hasApprovedHours) {
+      currentStatus = 'At Risk'; // Secondary: no pending logs AND no approved hours
+    }
 
     return {
       id: student.id,
       name: student.name,
       department: student.department,
       level: student.level,
-      status: hasPendingLogs ? 'Pending Review' : 'Active',
+      status: currentStatus,
       lastLogDate: latestLog ? latestLog.date : 'No logs yet',
     };
   });
@@ -45,17 +55,24 @@ export default function StudentsPage() {
       </div>
 
       <main className="flex-1 flex flex-col h-screen overflow-y-auto w-full">
-       <div className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-  <Link href="/supervisor" className="text-slate-900 text-xl font-bold tracking-wide hover:opacity-80 transition-opacity">
-    SIWES<span className="text-teal-500">Flow</span>
-  </Link>
-  <button 
-    onClick={() => setIsSidebarOpen(true)}
-    className="p-2 -mr-2 text-slate-600 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-  >
-    <Menu size={24} />
-  </button>
-</div>
+        <div className="md:hidden bg-siwes-blue border-b border-blue-900 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+          <Link href="/supervisor/dashboard" className="transition-opacity hover:opacity-80">
+            <Image 
+              src="/SIWESFlow_logo.png" 
+              alt="SIWESFlow Logo" 
+              width={140} 
+              height={40} 
+              className="object-contain brightness-0 invert" 
+              priority
+            />
+          </Link>
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-2 -mr-2 text-white hover:bg-blue-800/50 rounded-lg transition-colors"
+          >
+            <Menu size={24} />
+          </button>
+        </div>
 
         <div className="p-4 md:p-8 w-full max-w-7xl mx-auto">
           <div className="mb-6">
@@ -63,7 +80,7 @@ export default function StudentsPage() {
             <p className="text-slate-600 text-sm mt-1">Manage and review your assigned cohort.</p>
           </div>
           
-          {/* Pass the dynamically generated data here */}
+          {/* Renders your existing table component with the enriched data */}
           <AssignedStudentTable students={tableData} />
         </div>
       </main>
