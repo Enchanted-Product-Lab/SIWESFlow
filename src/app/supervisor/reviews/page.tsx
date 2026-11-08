@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { mockActivityLogs, mockStudents } from '../../../data/mock';
-import { FileSignature, Calendar, Clock, AlertCircle, ChevronRight } from 'lucide-react';
+import { FileSignature, Calendar, Clock, AlertCircle, ChevronRight, ArrowLeft } from 'lucide-react';
 
 export default function PendingReviewsPage() {
   // 1. Filter for all pending logs
@@ -19,6 +19,12 @@ export default function PendingReviewsPage() {
       {/* Header */}
       <header className="bg-white border-b border-slate-200 px-6 py-8 shadow-sm">
         <div className="max-w-5xl mx-auto">
+          <Link 
+            href="/supervisor/dashboard"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 mb-3 transition-colors"
+          >
+            <ArrowLeft size={14} /> Back to Supervisor Dashboard
+          </Link>
           <div className="flex items-center gap-3 mb-2">
             <div className="bg-rose-100 p-2 rounded-lg text-rose-600">
               <FileSignature size={24} />
@@ -72,12 +78,14 @@ export default function PendingReviewsPage() {
                   </div>
 
                   {/* Right: Action Button */}
-                  <Link 
-                    href={`/supervisor/students/${review.studentId}/logbook`}
-                    className="inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors shrink-0"
-                  >
-                    Review Entry <ChevronRight size={16} />
-                  </Link>
+                  <div className="flex items-center gap-3">
+                    <Link 
+                      href={`/supervisor/reviews/${review.id}`}
+                      className="inline-flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors shrink-0"
+                    >
+                      Review Entry <ChevronRight size={16} />
+                    </Link>
+                  </div>
                   
                 </div>
               ))}
