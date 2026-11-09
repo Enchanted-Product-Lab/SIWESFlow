@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, Clock, FileText, Paperclip, Loader2 } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, FileText, Loader2 } from 'lucide-react';
 import ReviewActionPanel, { ReviewActionPayload } from '../../../../../../components/supervisor/ReviewActionPanel';
-import { getEvidenceUrl, type EvidenceMetadata, submitActivityReview } from '../../../../../../services/api';
+import EvidenceViewer, { EvidenceMetadata } from '../../../../../../components/supervisor/EvidenceViewer';
+import { submitActivityReview } from '../../../../../../services/api';
 import apiClient from '../../../../../../services/apiClient';
 
 type UIActivityStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION';
@@ -20,63 +21,6 @@ interface ActivityData {
   learned: string;
   status: UIActivityStatus;
   evidence: EvidenceMetadata[];
-}
-
-function EvidenceViewer({ evidence }: { evidence: EvidenceMetadata }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let isMounted = true;
-    
-    getEvidenceUrl(evidence.documentId)
-      .then((res) => {
-        if (isMounted) {
-          setUrl(res.url);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        console.error("Evidence fetch failed:", err);
-        if (isMounted) {
-          setError(true);
-          setLoading(false);
-        }
-      });
-
-    return () => { isMounted = false; };
-  }, [evidence.documentId]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 bg-slate-100 text-slate-500 px-4 py-2 rounded-lg text-sm font-medium animate-pulse w-fit">
-        <Paperclip size={18} /> Loading secure link...
-      </div>
-    );
-  }
-
-  if (error || !url) {
-    return (
-      <div className="flex items-center gap-2 bg-rose-50 text-rose-600 px-4 py-2 rounded-lg text-sm font-medium w-fit">
-        <Paperclip size={18} /> Failed to load evidence
-      </div>
-    );
-  }
-
-  return (
-    <a 
-      href={url} 
-      target="_blank" 
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-2 text-siwes-blue hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg font-medium transition-colors"
-    >
-      <Paperclip size={18} />
-      {evidence.fileName} <span className="text-slate-400 text-xs font-normal">
-        ({(evidence.fileSizeBytes / 1024 / 1024).toFixed(2)} MB)
-      </span>
-    </a>
-  );
 }
 
 export default function ActivityReviewPage() {
@@ -110,7 +54,7 @@ export default function ActivityReviewPage() {
             description: act.description || '',
             learned: act.whatILearned || 'None specified',
             status: (act.status as UIActivityStatus) || 'PENDING',
-            evidence: Array.isArray(act.evidence) ? act.evidence : []
+            evidence: Array.isArray(act.evidence) ? (act.evidence as EvidenceMetadata[]) : []
           });
         }
       } catch (err) {
@@ -133,7 +77,9 @@ export default function ActivityReviewPage() {
         feedback: payload.feedback,
         rating: payload.rating
       });
-      setEntry(prev => prev ? ({ ...prev, status: payload.action }) : null);
+      
+      // Update local state to reflect the new status immediately
+      setEntry(prev => prev ? ({ ...prev, status: payload.action as UIActivityStatus }) : null);
       alert(`Review submitted successfully! Action: ${payload.action}`);
     } catch (err) {
       console.error('Failed to submit review:', err);
@@ -143,7 +89,7 @@ export default function ActivityReviewPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500 font-sans">
         <Loader2 className="animate-spin mr-2" size={24} />
         <span>Loading activity...</span>
       </div>
@@ -152,9 +98,9 @@ export default function ActivityReviewPage() {
 
   if (!entry) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600 font-sans">
         <h2 className="text-xl font-bold text-slate-900 mb-2">Activity Not Found</h2>
-        <Link href={`/supervisor/students/${studentId}`} className="text-siwes-blue hover:underline">Back to Student</Link>
+        <Link href={`/supervisor/students/${studentId}`} className="text-teal-600 hover:underline">Back to Student</Link>
       </div>
     );
   }
@@ -165,7 +111,7 @@ export default function ActivityReviewPage() {
         <div className="max-w-4xl mx-auto">
           <Link 
             href={`/supervisor/students/${studentId}`} 
-            className="inline-flex items-center text-sm font-medium text-slate-500 hover:text-siwes-blue mb-4 transition-colors"
+            className="inline-flex items-center text-sm font-medium text-slate-500 hover:text-teal-600 mb-4 transition-colors"
           >
             <ArrowLeft size={16} className="mr-1" /> Back to Logbook
           </Link>
@@ -177,7 +123,11 @@ export default function ActivityReviewPage() {
                 Log entry by <span className="font-semibold text-slate-900">{entry.studentName}</span>
               </p>
             </div>
-            <span className="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-sm font-bold uppercase tracking-wider">
+            <span className={`px-3 py-1 border rounded-full text-sm font-bold uppercase tracking-wider ${
+              entry.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+              entry.status === 'REJECTED' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+              'bg-amber-50 text-amber-700 border-amber-200'
+            }`}>
               {entry.status.replace('_', ' ')}
             </span>
           </div>
@@ -217,12 +167,8 @@ export default function ActivityReviewPage() {
 
           {entry.evidence && entry.evidence.length > 0 && (
             <div>
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-2">Attached Evidence</h3>
-              <div className="flex flex-wrap gap-3">
-                {entry.evidence.map((item) => (
-                  <EvidenceViewer key={item.documentId} evidence={item} />
-                ))}
-              </div>
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">Evidence Attached</h3>
+              <EvidenceViewer attachments={entry.evidence} />
             </div>
           )}
         </div>

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Menu, X } from 'lucide-react';
-import SupervisorNavigation from '@/components/supervisor/SupervisorNavigation';
+import SupervisorNavigation from '../../components/supervisor/SupervisorNavigation';
 import Image from 'next/image';
 
 export default function SupervisorLayout({
@@ -15,7 +15,7 @@ export default function SupervisorLayout({
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans">
       
-      {/* 1. Mobile Top Header */}
+      {/* 1. Mobile Top Header (Visible only on screens smaller than lg) */}
       <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-[#07145c] text-white flex items-center justify-between px-4 z-50">
         <Image
           src="/favicon.png"
@@ -34,7 +34,7 @@ export default function SupervisorLayout({
         </button>
       </div>
 
-      {/* 2. Mobile Backdrop Overlay */}
+      {/* 2. Mobile Backdrop Overlay (Click outside to close) */}
       {isMobileMenuOpen && (
         <div 
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 lg:hidden transition-opacity"
@@ -55,6 +55,7 @@ export default function SupervisorLayout({
       </div>
 
       {/* 4. Main Content Area */}
+      {/* Added pt-16 on mobile to push content below the fixed header */}
       <main className="flex-1 w-full overflow-y-auto pt-16 lg:pt-0">
         <div className="p-4 sm:p-6 lg:p-8">
           {children}

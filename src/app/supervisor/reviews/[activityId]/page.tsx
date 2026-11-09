@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ActivityLog, Student } from '../../../../types';
-import EvidenceViewer from '../../../../components/supervisor/EvidenceViewer';
+import EvidenceViewer, { EvidenceMetadata } from '../../../../components/supervisor/EvidenceViewer';
 import FeedbackForm from '../../../../components/supervisor/FeedbackForm';
 import { ArrowLeft, Calendar, Clock } from 'lucide-react';
 import apiClient from '../../../../services/apiClient';
@@ -117,26 +117,33 @@ export default async function ActivityReviewPage({
                 </div>
               </div>
 
-              {/* Evidence Viewer Section */}
+             {/* Evidence Viewer Section */}
               <div className="pt-6 border-t border-slate-100">
                 <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">Evidence Attached</h3>
-                <EvidenceViewer urls={log.evidenceUrls} />
+                <EvidenceViewer 
+                  attachments={
+                    // Strictly map the URLs to the EvidenceMetadata shape your component expects
+                    (log.evidenceUrls || []).map((url, index) => ({
+                      documentId: `doc_${index}`,
+                      fileName: typeof url === 'string' ? url.split('/').pop() || 'attachment' : 'attachment',
+                      fileSizeBytes: 0
+                    }))
+                  } 
+                />
               </div>
-
             </div>
           </div>
 
           {/* Right Column: Student Info & Actions */}
           <div className="space-y-6">
             
-            {/* Student Context Card */}
+            {/* Student Context Card (Matric No Hidden per Supervisor Rules) */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">
                 Student Profile
               </h3>
               <div className="space-y-3 text-sm">
                 <p className="text-slate-700"><strong className="text-slate-900">Name:</strong> {student.name}</p>
-                <p className="text-slate-700"><strong className="text-slate-900">Matric No:</strong> {student.matricNumber}</p>
                 <p className="text-slate-700"><strong className="text-slate-900">Level:</strong> {student.level}</p>
                 <p className="text-slate-700"><strong className="text-slate-900">Institution:</strong> {student.university}</p>
                 <p className="text-slate-700"><strong className="text-slate-900">Company:</strong> {student.placementCompany || 'Not Assigned'}</p>

@@ -14,7 +14,7 @@ export interface EvidenceMetadata {
 
 interface EvidenceViewerProps {
   attachments?: EvidenceMetadata[];
-  urls?: string[];
+  urls?: string[]; // Adding support for raw URL arrays from main branch
 }
 
 function EvidenceCard({ attachment }: { attachment: EvidenceMetadata }) {
@@ -28,10 +28,17 @@ function EvidenceCard({ attachment }: { attachment: EvidenceMetadata }) {
     const fetchSignedUrl = async () => {
       try {
         setIsLoading(true);
+        
+        // Fast-track: if the documentId is already a raw HTTP URL or absolute path, just use it directly
         if (attachment.documentId.startsWith('http') || attachment.documentId.startsWith('/')) {
-          setSignedUrl(attachment.documentId);
+          if (isMounted) {
+            setSignedUrl(attachment.documentId);
+            setIsLoading(false);
+          }
           return;
         }
+
+        // Otherwise, fetch a secure signed URL from the backend
         const response = await apiClient.get(`/documents/${attachment.documentId}/url`);
         if (isMounted) {
           setSignedUrl(response.data.url);
@@ -39,7 +46,9 @@ function EvidenceCard({ attachment }: { attachment: EvidenceMetadata }) {
       } catch (err) {
         console.warn('Backend offline - using fallback URL for local UI testing:', err);
         if (isMounted) {
+          // Mock URL so you can preview the UI and button hover states locally
           setSignedUrl("#");
+          setError(true);
         }
       } finally {
         if (isMounted) {
@@ -104,12 +113,13 @@ function EvidenceCard({ attachment }: { attachment: EvidenceMetadata }) {
 }
 
 export default function EvidenceViewer({ attachments, urls }: EvidenceViewerProps) {
+  // Gracefully normalize either EvidenceMetadata objects OR raw string URLs into a single usable format
   const normalizedAttachments: EvidenceMetadata[] = attachments && attachments.length > 0 
     ? attachments 
     : (urls || []).map((url, i) => ({
         documentId: url,
-        fileName: url.split('/').pop() || `Evidence Document ${i + 1}`,
-        fileSizeBytes: 1048576
+        fileName: typeof url === 'string' ? url.split('/').pop() || `Evidence Document ${i + 1}` : `Document ${i + 1}`,
+        fileSizeBytes: 0
       }));
 
   if (normalizedAttachments.length === 0) {

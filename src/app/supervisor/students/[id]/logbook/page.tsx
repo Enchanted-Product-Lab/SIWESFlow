@@ -1,6 +1,6 @@
 "use client";
 
-import React, { use, useEffect, useState } from 'react';
+import React, { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Calendar, Clock, CheckCircle, XCircle, ArrowLeft, MessageSquare, Briefcase, Loader2 } from 'lucide-react';
 import apiClient from '../../../../../services/apiClient';
@@ -20,32 +20,43 @@ export default function LogbookReviewPage({
   const [feedbacks, setFeedbacks] = useState<Record<string, string>>({});
   const [submittingId, setSubmittingId] = useState<string | null>(null);
 
-  const fetchStudentAndLogs = async () => {
+  // Tracks whether the in-flight fetch for the *current* `id` is still the
+  // latest one. Prevents a slow request from overwriting fresher state if
+  // the user navigates to a different student before it resolves.
+  const requestIdRef = useRef(0);
+
+  const fetchStudentAndLogs = useCallback(async (targetId: string, isStale: () => boolean) => {
+    setLoading(true);
+
     try {
-      const studentRes = await apiClient.get(`/students/${id}`);
-      if (studentRes.data) {
+      const studentRes = await apiClient.get(`/students/${targetId}`);
+      if (!isStale() && studentRes.data) {
         setStudent(mapBackendStudentToStudent(studentRes.data));
       }
     } catch {
-      setStudent(null);
+      if (!isStale()) setStudent(null);
     }
 
     try {
-      const actRes = await apiClient.get(`/activities?studentId=${id}`);
+      const actRes = await apiClient.get(`/activities?studentId=${targetId}`);
       const raw = Array.isArray(actRes.data) ? actRes.data : (Array.isArray(actRes.data?.data) ? actRes.data.data : []);
       const mapped = raw.map(mapBackendActivityToActivityLog);
       mapped.sort((a: ActivityLog, b: ActivityLog) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setLogs(mapped);
+      if (!isStale()) setLogs(mapped);
     } catch {
-      setLogs([]);
+      if (!isStale()) setLogs([]);
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchStudentAndLogs();
-  }, [id]);
+    const thisRequestId = ++requestIdRef.current;
+    const isStale = () => requestIdRef.current !== thisRequestId;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional data fetch keyed on `id`; setState calls happen after awaited network requests, not synchronously, and are guarded against stale/out-of-order responses via isStale().
+    void fetchStudentAndLogs(id, isStale);
+  }, [id, fetchStudentAndLogs]);
 
   const handleReview = async (activityId: string, action: 'APPROVED' | 'NEEDS_REVISION') => {
     const comment = feedbacks[activityId] || (action === 'APPROVED' ? 'Approved by supervisor' : 'Needs revision');
@@ -56,7 +67,7 @@ export default function LogbookReviewPage({
         action,
         feedback: comment,
       });
-      await fetchStudentAndLogs();
+      await fetchStudentAndLogs(id, () => false);
     } catch (err) {
       console.error('Failed to submit review:', err);
     } finally {

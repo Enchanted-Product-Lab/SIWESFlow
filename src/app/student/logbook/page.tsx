@@ -5,7 +5,7 @@ import StudentLayout from "@/components/student/StudentLayout";
 import apiClient from "@/services/apiClient";
 import { 
   BookOpen, Plus, Calendar, Clock, CheckCircle2, 
-  AlertCircle, MessageSquare, Tag, Filter, ChevronRight
+  MessageSquare, Tag 
 } from "lucide-react";
 
 interface ActivityItem {
@@ -18,6 +18,22 @@ interface ActivityItem {
   skillsUsed?: string[];
   category?: string;
   status: "PENDING" | "APPROVED" | "NEEDS_REVISION";
+  supervisorComment?: string;
+  rating?: number;
+}
+
+// Interface for raw API responses from GET /activities
+interface RawActivityItem {
+  id: string;
+  title: string;
+  date?: string | Date;
+  hoursWorked?: number | string;
+  description?: string;
+  whatILearned?: string;
+  skillsUsed?: string[];
+  category?: string;
+  status?: "PENDING" | "APPROVED" | "NEEDS_REVISION";
+  comment?: string;
   supervisorComment?: string;
   rating?: number;
 }
@@ -39,31 +55,41 @@ export default function StudentLogbookPage() {
     skillsInput: "",
   });
 
-  const fetchActivities = async () => {
-    try {
-      const res = await apiClient.get("/activities");
-      const raw = res.data;
-      const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
-      const mapped: ActivityItem[] = list.map((a: any) => ({
-        id: a.id,
-        title: a.title || "Untitled Activity",
-        date: a.date ? String(a.date).slice(0, 10) : new Date().toISOString().split("T")[0],
-        hoursWorked: Number(a.hoursWorked) || 0,
-        description: a.description || "",
-        whatILearned: a.whatILearned || "",
-        skillsUsed: Array.isArray(a.skillsUsed) ? a.skillsUsed : [],
-        category: a.category || "General",
-        status: a.status || "PENDING",
-        supervisorComment: a.comment || a.supervisorComment || undefined,
-        rating: a.rating || undefined,
-      }));
-      setActivities(mapped);
-    } catch {
-      setActivities([]);
-    }
-  };
+useEffect(() => {
+    const fetchActivities = async () => {
+      try {
+        const res = await apiClient.get("/activities");
+        // Cast the raw response to our expected shapes instead of any
+        const raw = res.data as RawActivityItem[] | { data: RawActivityItem[] };
+        
+        // Safely extract the array with strict typing
+        const list: RawActivityItem[] = Array.isArray(raw) 
+          ? raw 
+          : (raw && 'data' in raw && Array.isArray(raw.data) ? raw.data : []);
+        
+        if (list.length > 0) {
+          const mapped: ActivityItem[] = list.map((a: RawActivityItem) => ({
+            id: a.id,
+            title: a.title || "Untitled Activity",
+            date: a.date ? String(a.date).slice(0, 10) : new Date().toISOString().split("T")[0],
+            hoursWorked: Number(a.hoursWorked) || 0,
+            description: a.description || "",
+            whatILearned: a.whatILearned || "",
+            skillsUsed: Array.isArray(a.skillsUsed) ? a.skillsUsed : [],
+            category: a.category || "General",
+            status: a.status || "PENDING",
+            supervisorComment: a.comment || a.supervisorComment || undefined,
+            rating: a.rating || undefined,
+          }));
+          setActivities(mapped);
+        } else {
+          setActivities([]);
+        }
+      } catch {
+        setActivities([]); 
+      }
+    };
 
-  useEffect(() => {
     fetchActivities();
   }, []);
 
@@ -88,7 +114,7 @@ export default function StudentLogbookPage() {
     };
 
     try {
-      const res = await apiClient.post("/activities", payload);
+      const res = await apiClient.post<{ id?: string }>("/activities", payload);
       const newEntry: ActivityItem = {
         id: res.data?.id || `act-${Date.now()}`,
         title: form.title,

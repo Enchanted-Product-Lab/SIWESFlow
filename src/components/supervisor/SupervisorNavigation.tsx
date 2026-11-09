@@ -53,7 +53,7 @@ export default function SupervisorNavigation() {
       <div className="flex h-16 items-center border-b border-white/10 px-6">
         <Link href="/supervisor/dashboard" className="flex items-center">
           <Image
-            src="/icon.png"
+            src="/favicon.png"
             alt="SIWESFlow"
             width={130}
             height={40}
@@ -66,6 +66,7 @@ export default function SupervisorNavigation() {
       {/* Navigation */}
       <nav className="flex flex-1 flex-col gap-1 p-3">
         {navigationItems.map((item) => {
+          // Check if active (handles nested routes like /supervisor/reviews/act-1)
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
           return (
