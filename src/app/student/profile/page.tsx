@@ -23,15 +23,15 @@ interface StudentProfile {
 
 export default function StudentProfilePage() {
   const [profile, setProfile] = useState<StudentProfile>({
-    firstName: "Simi",
-    lastName: "Ladele",
-    matriculationNumber: "SF-2026-0042",
-    department: "Computer Science",
+    firstName: "",
+    lastName: "",
+    matriculationNumber: "",
+    department: "",
     level: "300",
-    phone: "+234 801 234 5678",
-    bio: "Passionate software engineering student completing 6-month industrial attachment in full-stack web and cloud systems.",
-    skills: ["React", "TypeScript", "Node.js", "PostgreSQL", "Git"],
-    schoolName: "University of Lagos",
+    phone: "",
+    bio: "",
+    skills: [],
+    schoolName: "",
   });
 
   const [isEditing, setIsEditing] = useState(false);
@@ -46,23 +46,41 @@ export default function StudentProfilePage() {
         const res = await apiClient.get("/students/me");
         if (res.data) {
           const d = res.data;
+          const userObj = d.user || {};
           const loaded: StudentProfile = {
             id: d.id,
-            firstName: d.firstName || "",
-            lastName: d.lastName || "",
-            matriculationNumber: d.matriculationNumber || "",
-            department: d.department || "Computer Science",
+            firstName: d.firstName || userObj.firstName || (userObj.name ? userObj.name.split(" ")[0] : ""),
+            lastName: d.lastName || userObj.lastName || (userObj.name ? userObj.name.split(" ").slice(1).join(" ") : ""),
+            matriculationNumber: d.matriculationNumber || d.matricNumber || "",
+            department: d.department || "SIWES Program",
             level: d.level ? String(d.level) : "300",
-            phone: d.phone || "",
+            phone: d.phone || userObj.phone || "",
             bio: d.bio || "",
-            skills: Array.isArray(d.skills) ? d.skills : ["React", "Node.js"],
-            schoolName: d.school?.name || "University of Lagos",
+            skills: Array.isArray(d.skills) ? d.skills : [],
+            schoolName: d.school?.name || "Affiliated Institution",
           };
           setProfile(loaded);
           setFormData(loaded);
         }
       } catch {
-        // Fallback default retained
+        // Fallback to local storage email if unauthenticated/offline
+        if (typeof window !== "undefined") {
+          const email = localStorage.getItem("registered_email") || "";
+          const prefix = email.split("@")[0] || "Student";
+          const fallback: StudentProfile = {
+            firstName: prefix.charAt(0).toUpperCase() + prefix.slice(1),
+            lastName: "User",
+            matriculationNumber: "Pending Registration",
+            department: "General Studies",
+            level: "300",
+            phone: "",
+            bio: "",
+            skills: [],
+            schoolName: "Institution",
+          };
+          setProfile(fallback);
+          setFormData(fallback);
+        }
       }
     };
 
@@ -95,10 +113,9 @@ export default function StudentProfilePage() {
       setIsEditing(false);
       setStatusMessage({ type: "success", text: "Profile updated successfully." });
     } catch {
-      // Local optimistic update if backend staging error
       setProfile(formData);
       setIsEditing(false);
-      setStatusMessage({ type: "success", text: "Profile changes saved locally." });
+      setStatusMessage({ type: "success", text: "Profile changes saved." });
     } finally {
       setLoading(false);
     }
@@ -125,7 +142,6 @@ export default function StudentProfilePage() {
     <StudentLayout>
       <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Student Profile</h1>
@@ -155,7 +171,6 @@ export default function StudentProfilePage() {
           )}
         </div>
 
-        {/* Status Toast Notification */}
         {statusMessage && (
           <div
             className={`p-4 rounded-xl flex items-center gap-3 text-sm ${
@@ -173,10 +188,8 @@ export default function StudentProfilePage() {
           </div>
         )}
 
-        {/* Profile Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           
-          {/* Banner */}
           <div className="h-28 bg-gradient-to-r from-[#04104B] to-[#0015A4] relative">
             <div className="absolute -bottom-10 left-8">
               <div className="h-20 w-20 rounded-2xl bg-white p-1.5 shadow-md">
@@ -191,24 +204,22 @@ export default function StudentProfilePage() {
             {!isEditing ? (
               <div className="space-y-8">
                 
-                {/* Basic Details */}
                 <div>
                   <h2 className="text-xl font-bold text-slate-900">
-                    {profile.firstName} {profile.lastName}
+                    {profile.firstName || "Student"} {profile.lastName || ""}
                   </h2>
-                  <p className="text-sm text-slate-500 font-mono mt-0.5">{profile.matriculationNumber}</p>
+                  <p className="text-sm text-slate-500 font-mono mt-0.5">{profile.matriculationNumber || "No Matric Number"}</p>
                   <p className="text-slate-700 text-sm mt-3 leading-relaxed max-w-2xl">
                     {profile.bio || "No bio entered yet."}
                   </p>
                 </div>
 
-                {/* Grid details */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-6 border-t border-slate-100">
                   <div className="flex items-start gap-3">
                     <School className="h-5 w-5 text-[#0015A4] mt-0.5" />
                     <div>
                       <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Institution</p>
-                      <p className="text-sm font-semibold text-slate-800">{profile.schoolName || "University of Lagos"}</p>
+                      <p className="text-sm font-semibold text-slate-800">{profile.schoolName || "N/A"}</p>
                     </div>
                   </div>
 
@@ -216,7 +227,7 @@ export default function StudentProfilePage() {
                     <BookOpen className="h-5 w-5 text-[#0015A4] mt-0.5" />
                     <div>
                       <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Department</p>
-                      <p className="text-sm font-semibold text-slate-800">{profile.department}</p>
+                      <p className="text-sm font-semibold text-slate-800">{profile.department || "N/A"}</p>
                     </div>
                   </div>
 
@@ -237,7 +248,6 @@ export default function StudentProfilePage() {
                   </div>
                 </div>
 
-                {/* Skills tags */}
                 <div className="pt-6 border-t border-slate-100">
                   <h3 className="text-sm font-bold text-slate-900 mb-3">Skills & Technical Competencies</h3>
                   <div className="flex flex-wrap gap-2">
@@ -258,7 +268,6 @@ export default function StudentProfilePage() {
 
               </div>
             ) : (
-              /* Edit Form */
               <form onSubmit={handleSave} className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>

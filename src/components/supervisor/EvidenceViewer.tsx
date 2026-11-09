@@ -13,7 +13,8 @@ export interface EvidenceMetadata {
 }
 
 interface EvidenceViewerProps {
-  attachments: EvidenceMetadata[];
+  attachments?: EvidenceMetadata[];
+  urls?: string[]; // Adding support for raw URL arrays from main branch
 }
 
 function EvidenceCard({ attachment }: { attachment: EvidenceMetadata }) {
@@ -21,12 +22,23 @@ function EvidenceCard({ attachment }: { attachment: EvidenceMetadata }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
 
- useEffect(() => {
+  useEffect(() => {
     let isMounted = true;
 
     const fetchSignedUrl = async () => {
       try {
         setIsLoading(true);
+        
+        // Fast-track: if the documentId is already a raw HTTP URL or absolute path, just use it directly
+        if (attachment.documentId.startsWith('http') || attachment.documentId.startsWith('/')) {
+          if (isMounted) {
+            setSignedUrl(attachment.documentId);
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        // Otherwise, fetch a secure signed URL from the backend
         const response = await apiClient.get(`/documents/${attachment.documentId}/url`);
         if (isMounted) {
           setSignedUrl(response.data.url);
@@ -36,6 +48,7 @@ function EvidenceCard({ attachment }: { attachment: EvidenceMetadata }) {
         if (isMounted) {
           // Mock URL so you can preview the UI and button hover states locally
           setSignedUrl("#");
+          setError(true);
         }
       } finally {
         if (isMounted) {
@@ -99,8 +112,17 @@ function EvidenceCard({ attachment }: { attachment: EvidenceMetadata }) {
   );
 }
 
-export default function EvidenceViewer({ attachments }: EvidenceViewerProps) {
-  if (!attachments || attachments.length === 0) {
+export default function EvidenceViewer({ attachments, urls }: EvidenceViewerProps) {
+  // Gracefully normalize either EvidenceMetadata objects OR raw string URLs into a single usable format
+  const normalizedAttachments: EvidenceMetadata[] = attachments && attachments.length > 0 
+    ? attachments 
+    : (urls || []).map((url, i) => ({
+        documentId: url,
+        fileName: typeof url === 'string' ? url.split('/').pop() || `Evidence Document ${i + 1}` : `Document ${i + 1}`,
+        fileSizeBytes: 0
+      }));
+
+  if (normalizedAttachments.length === 0) {
     return (
       <div className="bg-slate-50 border border-slate-200 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-slate-500">
         <FileX size={32} className="mb-2 text-slate-400" />
@@ -112,7 +134,7 @@ export default function EvidenceViewer({ attachments }: EvidenceViewerProps) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      {attachments.map((attachment, index) => (
+      {normalizedAttachments.map((attachment, index) => (
         <EvidenceCard key={attachment.documentId || index} attachment={attachment} />
       ))}
     </div>

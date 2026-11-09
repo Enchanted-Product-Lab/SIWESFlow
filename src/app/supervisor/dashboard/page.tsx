@@ -5,12 +5,16 @@ import Link from 'next/link';
 import { BookOpen, UserCheck } from 'lucide-react';
 import DashboardMetrics from '../../../components/supervisor/DashboardMetrics';
 import RecentActivityTable from '../../../components/supervisor/RecentActivityTable';
-import { mockStudents, mockActivityLogs } from '../../../data/mock';
 import apiClient from '../../../services/apiClient';
 
+// Automatically extract the exact types that RecentActivityTable expects!
+// This guarantees a perfect type match without manually duplicating the interfaces.
+type ActivityLog = React.ComponentProps<typeof RecentActivityTable>['logs'][0];
+type Student = React.ComponentProps<typeof RecentActivityTable>['students'][0];
+
 export default function SupervisorDashboard() {
-  const [logs, setLogs] = useState(mockActivityLogs);
-  const [students, setStudents] = useState(mockStudents);
+  const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
 
   useEffect(() => {
     async function loadData() {
@@ -19,19 +23,33 @@ export default function SupervisorDashboard() {
           apiClient.get('/activities'),
           apiClient.get('/students'),
         ]);
-        if (actRes.status === 'fulfilled' && Array.isArray(actRes.value.data) && actRes.value.data.length > 0) {
-          setLogs(actRes.value.data);
+
+        if (actRes.status === 'fulfilled') {
+          // Strictly type the response to match ActivityLog
+          const rawAct = actRes.value.data as ActivityLog[] | { data: ActivityLog[] };
+          const listAct = Array.isArray(rawAct) 
+            ? rawAct 
+            : (rawAct && 'data' in rawAct && Array.isArray(rawAct.data) ? rawAct.data : []);
+          
+          setLogs(listAct);
         }
+
         if (stuRes.status === 'fulfilled') {
-          const list = Array.isArray(stuRes.value.data) ? stuRes.value.data : stuRes.value.data?.students;
-          if (Array.isArray(list) && list.length > 0) {
-            setStudents(list);
-          }
+          // Strictly type the response to match Student
+          const rawStu = stuRes.value.data as Student[] | { data: Student[] } | { students: Student[] };
+          const listStu = Array.isArray(rawStu) 
+            ? rawStu 
+            : (rawStu && 'data' in rawStu && Array.isArray(rawStu.data) 
+                ? rawStu.data 
+                : (rawStu && 'students' in rawStu && Array.isArray(rawStu.students) ? rawStu.students : []));
+          
+          setStudents(listStu);
         }
-      } catch {
-        // Fall back cleanly to mock fixtures if unauthenticated or offline
+      } catch (err) {
+        console.error('Failed to load supervisor dashboard data:', err);
       }
     }
+    
     loadData();
   }, []);
 

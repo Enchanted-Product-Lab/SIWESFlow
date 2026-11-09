@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Menu, X } from 'lucide-react';
-import SupervisorNavigation from '@/components/supervisor/SupervisorNavigation';
+import SupervisorNavigation from '../../components/supervisor/SupervisorNavigation';
 import Image from 'next/image';
 
 export default function SupervisorLayout({

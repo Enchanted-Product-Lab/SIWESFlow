@@ -2,9 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
-import { mockActivityLogs, mockStudents } from "@/data/mock";
-import { Student } from "@/types";
-import { mapBackendStudentToStudent } from "@/services/schoolService";
+import { Student, ActivityLog } from "@/types";
+import { mapBackendStudentToStudent, mapBackendActivityToActivityLog } from "@/services/schoolService";
 import apiClient from "@/services/apiClient";
 
 type StudentProfilePageProps = {
@@ -18,36 +17,29 @@ export default async function StudentProfilePage({
 }: StudentProfilePageProps) {
   const { id } = await params;
 
-  let student: Student | undefined = mockStudents.find(
-    (mockStudent) => mockStudent.id === id,
-  );
+  let student: Student | null = null;
+  let studentActivities: ActivityLog[] = [];
 
-  if (!student) {
-    try {
-      const res = await apiClient.get(`/students/${id}`);
-      if (res.data) {
-        student = mapBackendStudentToStudent(res.data);
-      }
-    } catch (_err) {
-      // Fallback below
+  try {
+    const res = await apiClient.get(`/students/${id}`);
+    if (res.data) {
+      student = mapBackendStudentToStudent(res.data);
     }
+  } catch (_err) {
+    // handled below
   }
 
   if (!student) {
-    student = {
-      id,
-      name: "Student " + id,
-      matricNumber: "MAT/2026/" + id.slice(-3),
-      university: "National Open University of Nigeria",
-      department: "Computer Science",
-      level: "300 Level",
-      placementCompany: "Enchanted Digital Academy",
-    };
+    notFound();
   }
 
-  const studentActivities = mockActivityLogs.filter(
-    (activityLog) => activityLog.studentId === student.id,
-  );
+  try {
+    const actRes = await apiClient.get(`/activities?studentId=${id}`);
+    const raw = Array.isArray(actRes.data) ? actRes.data : (Array.isArray(actRes.data?.data) ? actRes.data.data : []);
+    studentActivities = raw.map(mapBackendActivityToActivityLog);
+  } catch (_err) {
+    studentActivities = [];
+  }
 
   const hasPlacement = student.placementCompany.trim().length > 0;
   const hasActivity = studentActivities.length > 0;

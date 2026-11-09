@@ -11,37 +11,46 @@ import Link from "next/link";
 
 export default function StudentProgressPage() {
   const [stats, setStats] = useState({
-    completedWeeks: 14,
+    completedWeeks: 0,
     totalWeeks: 24,
-    loggedHours: 280,
+    loggedHours: 0,
     requiredHours: 480,
-    approvedEntries: 14,
-    pendingEntries: 2,
-    completionPercentage: 58,
+    approvedEntries: 0,
+    pendingEntries: 0,
+    completionPercentage: 0,
   });
 
   useEffect(() => {
     const fetchProgress = async () => {
       try {
         const res = await apiClient.get("/activities");
-        if (Array.isArray(res.data) && res.data.length > 0) {
-          const totalHours = res.data.reduce((sum: number, a: any) => sum + (Number(a.hoursWorked) || 0), 0);
-          const approved = res.data.filter((a: any) => a.status === "APPROVED").length;
-          const pending = res.data.filter((a: any) => a.status === "PENDING").length;
-          const pct = Math.min(100, Math.round((totalHours / 480) * 100));
+        const raw = res.data;
+        const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+        const totalHours = list.reduce((sum: number, a: any) => sum + (Number(a.hoursWorked) || 0), 0);
+        const approved = list.filter((a: any) => a.status === "APPROVED").length;
+        const pending = list.filter((a: any) => a.status === "PENDING").length;
+        const pct = totalHours > 0 ? Math.min(100, Math.round((totalHours / 480) * 100)) : 0;
+        const weeks = totalHours > 0 ? Math.min(24, Math.max(1, Math.round(totalHours / 20))) : 0;
 
-          setStats({
-            completedWeeks: Math.min(24, Math.max(1, Math.round(totalHours / 20))),
-            totalWeeks: 24,
-            loggedHours: totalHours,
-            requiredHours: 480,
-            approvedEntries: approved,
-            pendingEntries: pending,
-            completionPercentage: pct,
-          });
-        }
+        setStats({
+          completedWeeks: weeks,
+          totalWeeks: 24,
+          loggedHours: totalHours,
+          requiredHours: 480,
+          approvedEntries: approved,
+          pendingEntries: pending,
+          completionPercentage: pct,
+        });
       } catch {
-        // Fallback default
+        setStats({
+          completedWeeks: 0,
+          totalWeeks: 24,
+          loggedHours: 0,
+          requiredHours: 480,
+          approvedEntries: 0,
+          pendingEntries: 0,
+          completionPercentage: 0,
+        });
       }
     };
 
@@ -52,31 +61,31 @@ export default function StudentProgressPage() {
     {
       title: "Placement Secured & Registered",
       description: "Company attachment confirmed and logged on SIWESFlow platform.",
-      status: "COMPLETED",
+      status: stats.completedWeeks > 0 ? "COMPLETED" : "IN_PROGRESS",
       date: "Week 1",
     },
     {
       title: "Introduction & Acceptance Letters Submitted",
       description: "Official ITF and institutional acceptance documents uploaded and verified.",
-      status: "COMPLETED",
+      status: stats.completedWeeks >= 2 ? "COMPLETED" : "IN_PROGRESS",
       date: "Week 2",
     },
     {
       title: "First Month Logbook Signoff",
       description: "Initial 4 weeks of daily logs evaluated and approved by industry supervisor.",
-      status: "COMPLETED",
+      status: stats.completedWeeks >= 4 ? "COMPLETED" : (stats.completedWeeks > 0 ? "IN_PROGRESS" : "UPCOMING"),
       date: "Week 4",
     },
     {
       title: "Midterm Industrial Assessment",
       description: "Institutional supervisor on-site or digital check-in and logbook extract review.",
-      status: "IN_PROGRESS",
+      status: stats.completedWeeks >= 12 ? "COMPLETED" : (stats.completedWeeks >= 6 ? "IN_PROGRESS" : "UPCOMING"),
       date: "Week 12-14",
     },
     {
       title: "Final Logbook Completion & Clearance",
       description: "480 minimum logged hours, final supervisor rating, and institutional signoff.",
-      status: "UPCOMING",
+      status: stats.loggedHours >= 480 ? "COMPLETED" : "UPCOMING",
       date: "Week 24",
     },
   ];
@@ -85,17 +94,15 @@ export default function StudentProgressPage() {
     <StudentLayout>
       <div className="max-w-5xl mx-auto space-y-6">
         
-        {/* Header */}
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">SIWES Progress & Milestones</h1>
           <p className="text-slate-600 text-sm">Track your progress toward the 24-week (480-hour) industrial training completion</p>
         </div>
 
-        {/* Big Progress Overview Card */}
         <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-8">
           <div className="space-y-4 max-w-xl">
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-[#0015A4] border border-blue-100">
-              Training Status: In Progress
+              Training Status: {stats.completionPercentage >= 100 ? "Completed" : "In Progress"}
             </span>
             <h2 className="text-2xl font-bold text-slate-900">
               You have completed {stats.completionPercentage}% of your required SIWES duration
@@ -104,7 +111,6 @@ export default function StudentProgressPage() {
               Keep submitting your daily logs consistently. Once you hit 480 verified hours and obtain all clearance documents, your school coordinator can issue your final SIWES certificate.
             </p>
 
-            {/* Progress bar */}
             <div className="space-y-2 pt-2">
               <div className="flex justify-between text-xs font-bold text-slate-700">
                 <span>{stats.loggedHours} Hours Logged</span>
@@ -119,7 +125,6 @@ export default function StudentProgressPage() {
             </div>
           </div>
 
-          {/* Circular progress visual */}
           <div className="relative h-36 w-36 shrink-0">
             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
               <circle cx="50" cy="50" r="40" stroke="#E2E8F0" strokeWidth="8" fill="none" />
@@ -142,7 +147,6 @@ export default function StudentProgressPage() {
           </div>
         </div>
 
-        {/* Metric Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex items-center gap-3 mb-2">
@@ -172,7 +176,6 @@ export default function StudentProgressPage() {
           </div>
         </div>
 
-        {/* Milestone Stepper */}
         <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm">
           <h3 className="text-lg font-bold text-slate-900 mb-6">Program Milestones</h3>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, use } from 'react';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -15,47 +15,86 @@ import {
   ExternalLink
 } from 'lucide-react';
 import Link from 'next/link';
+import apiClient from '../../../../services/apiClient';
+import { submitActivityReview } from '../../../../services/api';
 
-// 1. Define the status type
 type ActivityStatus = 'PENDING' | 'APPROVED' | 'NEEDS_REVISION' | 'REJECTED';
 
-// Mock activity data for Sprint 1
-const mockActivity = {
-  id: "act-101",
-  studentId: "std-882",
-  studentName: "Francess Okafor",
-  studentMatric: "NOU192837412",
-  department: "Computer Science",
-  date: "2026-10-14",
-  title: "Implemented Next.js App Router Auth Gateway & Supabase Hooks",
-  category: "Frontend Development",
-  hoursWorked: 8,
-  skillsUsed: ["Next.js 15", "TypeScript", "Tailwind CSS", "Supabase Auth"],
-  description: "Constructed standard split-screen layout for authentication pages. Configured middleware guards and JWT persistence logic.",
-  whatILearned: "Understood async route params handling in Next.js 15 and server context resolution during middleware execution.",
-  challenges: "Faced transient hydration warnings when reading auth state from localStorage before layout render.",
-  // 2. Cast status as ActivityStatus instead of const
-  status: "PENDING" as ActivityStatus,
-  evidence: [
-    {
-      id: "doc-1",
-      fileUrl: "/mock-evidence.png",
-      fileType: "image/jpeg" as const,
-      fileName: "auth_gateway_screenshot.jpg",
-      fileSizeMB: 1.8
-    }
-  ]
-};
+interface ActivityDetail {
+  id: string;
+  studentId?: string;
+  studentName?: string;
+  studentMatric?: string;
+  department?: string;
+  date: string;
+  title: string;
+  category: string;
+  hoursWorked: number;
+  skillsUsed: string[];
+  description: string;
+  whatILearned: string;
+  challenges: string;
+  status: ActivityStatus;
+  evidence?: Array<{
+    id: string;
+    fileUrl: string;
+    fileType: string;
+    fileName: string;
+    fileSizeMB: number;
+  }>;
+}
 
-export default function ActivityReviewPage() {
-  const [activity, setActivity] = useState(mockActivity);
+export default function ActivityReviewPage({
+  params
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = use(params);
+  const [activity, setActivity] = useState<ActivityDetail | null>(null);
+  const [loading, setLoading] = useState(true);
   const [comment, setComment] = useState('');
   const [rating, setRating] = useState<number>(0);
   const [hoveredRating, setHoveredRating] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [flagReason, setFlagReason] = useState('');
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  const fetchActivity = async () => {
+    try {
+      const res = await apiClient.get(`/activities/${id}`);
+      const data = res.data;
+      if (data) {
+        const studentObj = data.student || {};
+        const userObj = studentObj.user || {};
+        setActivity({
+          id: data.id,
+          studentId: data.studentId || studentObj.id,
+          studentName: userObj.name || (userObj.firstName ? `${userObj.firstName} ${userObj.lastName}`.trim() : 'Student'),
+          studentMatric: studentObj.matriculationNumber || 'N/A',
+          department: studentObj.department || 'SIWES Program',
+          date: data.date ? new Date(data.date).toISOString().split('T')[0] : 'N/A',
+          title: data.title || 'Untitled Activity',
+          category: data.category || 'General',
+          hoursWorked: Number(data.hoursWorked) || 0,
+          skillsUsed: Array.isArray(data.skillsUsed) ? data.skillsUsed : [],
+          description: data.description || '',
+          whatILearned: data.whatILearned || 'None specified',
+          challenges: data.challenges || 'None reported',
+          status: (data.status as ActivityStatus) || 'PENDING',
+          evidence: Array.isArray(data.evidence) ? data.evidence : []
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load activity:', err);
+      setActivity(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchActivity();
+  }, [id]);
 
   const handleReviewSubmit = async (action: ActivityStatus) => {
     if ((action === 'NEEDS_REVISION' || action === 'REJECTED') && !comment.trim()) {
@@ -66,33 +105,45 @@ export default function ActivityReviewPage() {
     setIsSubmitting(true);
 
     try {
-      // Mock API latency
-      await new Promise((res) => setTimeout(res, 800));
+      await submitActivityReview({
+        activityId: id,
+        action: action === 'APPROVED' ? 'APPROVED' : 'NEEDS_REVISION',
+        feedback: comment.trim() || (action === 'APPROVED' ? 'Approved' : 'Needs revision'),
+        rating: rating > 0 ? rating : undefined
+      });
 
-      setActivity((prev) => ({
-        ...prev,
-        status: action,
-        supervisorFeedback: {
-          comment,
-          rating,
-          reviewedAt: new Date().toISOString(),
-          actionTaken: action
-        }
-      }));
-
+      setActivity((prev) => prev ? ({ ...prev, status: action }) : null);
       setActionSuccess(`Activity marked as ${action.replace('_', ' ')} successfully.`);
     } catch (err) {
-      console.error(err);
+      console.error('Review submission failed:', err);
+      alert('Failed to submit review. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">
+        <Loader2 className="animate-spin mr-2" size={24} />
+        <span>Loading activity details...</span>
+      </div>
+    );
+  }
+
+  if (!activity) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600">
+        <h2 className="text-xl font-bold text-slate-900 mb-2">Activity Not Found</h2>
+        <Link href="/supervisor/dashboard" className="text-siwes-blue hover:underline">Return to Dashboard</Link>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 p-6 lg:p-10 font-sans text-slate-900">
       <div className="max-w-5xl mx-auto space-y-6">
         
-        {/* Navigation Header */}
         <div className="flex items-center justify-between">
           <Link 
             href="/supervisor/dashboard" 
@@ -118,10 +169,8 @@ export default function ActivityReviewPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* Main Activity Details (2 Cols) */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* Header Card */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-start justify-between">
                 <div>
@@ -145,7 +194,6 @@ export default function ActivityReviewPage() {
               </div>
             </div>
 
-            {/* Core Work Breakdown */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Tasks & Activities</h3>
@@ -165,16 +213,19 @@ export default function ActivityReviewPage() {
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Skills Utilized</h3>
                 <div className="flex flex-wrap gap-2 mt-1">
-                  {activity.skillsUsed.map((skill, idx) => (
-                    <span key={idx} className="bg-slate-100 text-slate-700 text-xs font-medium px-2.5 py-1 rounded-md">
-                      {skill}
-                    </span>
-                  ))}
+                  {activity.skillsUsed.length > 0 ? (
+                    activity.skillsUsed.map((skill, idx) => (
+                      <span key={idx} className="bg-slate-100 text-slate-700 text-xs font-medium px-2.5 py-1 rounded-md">
+                        {skill}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-400">None specified</span>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Evidence & Attachments */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Submitted Evidence</h3>
               {activity.evidence && activity.evidence.length > 0 ? (
@@ -206,10 +257,7 @@ export default function ActivityReviewPage() {
 
           </div>
 
-          {/* Right Column - Review Actions Panel */}
           <div className="space-y-6">
-            
-            {/* Student Context Card */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Student Profile</h3>
               <div>
@@ -219,11 +267,9 @@ export default function ActivityReviewPage() {
               </div>
             </div>
 
-            {/* Review Action Controls */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h3 className="text-sm font-bold text-slate-900">Supervisor Assessment</h3>
 
-              {/* Rating Selector */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1.5">Rating (Optional)</label>
                 <div className="flex items-center space-x-1">
@@ -246,7 +292,6 @@ export default function ActivityReviewPage() {
                 </div>
               </div>
 
-              {/* Feedback Comment */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1.5">Feedback / Comments</label>
                 <textarea
@@ -258,7 +303,6 @@ export default function ActivityReviewPage() {
                 />
               </div>
 
-              {/* Action Buttons */}
               <div className="space-y-2 pt-2">
                 <button
                   onClick={() => handleReviewSubmit('APPROVED')}
@@ -274,14 +318,6 @@ export default function ActivityReviewPage() {
                   className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white font-medium text-sm rounded-xl flex items-center justify-center transition-colors disabled:opacity-50"
                 >
                   {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <> <AlertTriangle className="w-4 h-4 mr-2" /> Request Correction </>}
-                </button>
-
-                <button
-                  onClick={() => handleReviewSubmit('REJECTED')}
-                  disabled={isSubmitting}
-                  className="w-full py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white font-medium text-sm rounded-xl flex items-center justify-center transition-colors disabled:opacity-50"
-                >
-                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <> <XCircle className="w-4 h-4 mr-2" /> Reject Entry </>}
                 </button>
               </div>
 

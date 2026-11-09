@@ -4,7 +4,6 @@ import Link from "next/link";
 
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
 import { useEffect, useMemo, useState } from "react";
-import { mockActivityLogs, mockStudents } from "@/data/mock";
 import { ActivityLog, Student } from "@/types";
 import { fetchActivitiesWithFallback, fetchStudentsWithFallback } from "@/services/schoolService";
 
@@ -32,8 +31,8 @@ const statusStyles = {
 } as const;
 
 export default function SchoolActivityMonitoringPage() {
-  const [activities, setActivities] = useState<ActivityLog[]>(mockActivityLogs);
-  const [students, setStudents] = useState<Student[]>(mockStudents);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isLoading, setIsLoading] = useState(true);
