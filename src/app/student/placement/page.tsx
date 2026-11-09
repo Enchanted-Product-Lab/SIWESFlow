@@ -5,7 +5,7 @@ import StudentLayout from "@/components/student/StudentLayout";
 import apiClient from "@/services/apiClient";
 import { 
   Briefcase, MapPin, Building, Users, 
-  Clock, CheckCircle2, AlertCircle, Send, ExternalLink, Search
+  Clock, CheckCircle2, AlertCircle, Send, Search, Loader2
 } from "lucide-react";
 
 interface PlacementItem {
@@ -21,56 +21,23 @@ interface PlacementItem {
   isApplied?: boolean;
 }
 
+interface CurrentPlacement {
+  companyName: string;
+  role: string;
+  location: string;
+  arrangement: string;
+  supervisorName: string;
+  supervisorEmail: string;
+  startDate: string;
+  duration: string;
+  status: string;
+}
+
 export default function StudentPlacementPage() {
   const [activeTab, setActiveTab] = useState<"current" | "explore">("current");
-  const [placements, setPlacements] = useState<PlacementItem[]>([
-    {
-      id: "place-1",
-      title: "Frontend Engineering Intern",
-      companyName: "TechNova Solutions",
-      location: "Lagos, Nigeria",
-      workArrangement: "Hybrid",
-      description: "Build client dashboards, interactive forms, and responsive mobile-first UI using Next.js and Tailwind CSS.",
-      openings: 5,
-      remainingSlots: 2,
-      departmentScope: "Computer Science / Software Engineering",
-      isApplied: true,
-    },
-    {
-      id: "place-2",
-      title: "Backend Cloud Developer Intern",
-      companyName: "PayDirect Systems",
-      location: "Victoria Island, Lagos",
-      workArrangement: "On-site",
-      description: "Develop REST and GraphQL microservices, PostgreSQL schemas, and queue workers using Node.js and Express.",
-      openings: 3,
-      remainingSlots: 1,
-      departmentScope: "Computer Science / Information Technology",
-    },
-    {
-      id: "place-3",
-      title: "DevOps & Infrastructure Trainee",
-      companyName: "CloudForge Networks",
-      location: "Abuja, Nigeria",
-      workArrangement: "Remote",
-      description: "Assist with CI/CD GitHub workflows, Docker containerization, and AWS server monitoring.",
-      openings: 4,
-      remainingSlots: 3,
-      departmentScope: "Computer Engineering / System Engineering",
-    },
-  ]);
-
-  const [currentPlacement] = useState({
-    companyName: "TechNova Solutions",
-    role: "Frontend Development Intern",
-    location: "Lagos, Nigeria",
-    arrangement: "Hybrid",
-    supervisorName: "Dr. Babatunde Adeyemi",
-    supervisorEmail: "b.adeyemi@technova.io",
-    startDate: "June 1, 2026",
-    duration: "24 Weeks (6 Months)",
-    status: "ACTIVE",
-  });
+  const [placements, setPlacements] = useState<PlacementItem[]>([]);
+  const [currentPlacement, setCurrentPlacement] = useState<CurrentPlacement | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [applyingPlacement, setApplyingPlacement] = useState<PlacementItem | null>(null);
@@ -79,15 +46,21 @@ export default function StudentPlacementPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const fetchPlacements = async () => {
+    const fetchPlacementData = async () => {
       try {
-        const res = await apiClient.get("/placements");
-        if (Array.isArray(res.data) && res.data.length > 0) {
-          const mapped: PlacementItem[] = res.data.map((p: any) => ({
+        const [placeRes, profileRes] = await Promise.allSettled([
+          apiClient.get("/placements"),
+          apiClient.get("/students/me")
+        ]);
+
+        if (placeRes.status === "fulfilled") {
+          const raw = placeRes.value.data;
+          const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+          const mapped: PlacementItem[] = list.map((p: any) => ({
             id: p.id,
-            title: p.title || p.role || "Software Intern",
-            companyName: p.company?.name || p.companyName || "Partner Firm",
-            location: p.location || "Lagos, Nigeria",
+            title: p.title || p.role || "SIWES Intern",
+            companyName: p.company?.name || p.companyName || "Host Company",
+            location: p.location || "Nigeria",
             workArrangement: p.workArrangement || p.mode || "Hybrid",
             description: p.description || "6-month supervised SIWES training attachment.",
             openings: p.capacity || p.slots || 5,
@@ -95,13 +68,48 @@ export default function StudentPlacementPage() {
             departmentScope: p.departmentScope || "Engineering & Technology",
           }));
           setPlacements(mapped);
+
+          // Check if student has current placement in profile
+          if (profileRes.status === "fulfilled" && profileRes.value.data) {
+            const s = profileRes.value.data;
+            if (s.placement || s.placementId) {
+              const matched = mapped.find(m => m.id === (s.placement?.id || s.placementId));
+              setCurrentPlacement({
+                companyName: s.placement?.company?.name || matched?.companyName || "Assigned Company",
+                role: s.placement?.title || matched?.title || "SIWES Intern",
+                location: matched?.location || "Nigeria",
+                arrangement: matched?.workArrangement || "Hybrid",
+                supervisorName: s.supervisor?.name || "Assigned Industry Supervisor",
+                supervisorEmail: s.supervisor?.email || "supervisor@siwesflow.com",
+                startDate: s.createdAt ? new Date(s.createdAt).toLocaleDateString() : "Active",
+                duration: "24 Weeks (6 Months)",
+                status: s.placementStatus || "ACTIVE",
+              });
+            } else if (mapped.length > 0) {
+              // Default to first active placement if student is attached
+              const first = mapped[0];
+              setCurrentPlacement({
+                companyName: first.companyName,
+                role: first.title,
+                location: first.location,
+                arrangement: first.workArrangement,
+                supervisorName: "Assigned Industry Supervisor",
+                supervisorEmail: "supervisor@siwesflow.com",
+                startDate: "Ongoing",
+                duration: "24 Weeks (6 Months)",
+                status: "ACTIVE",
+              });
+            }
+          }
         }
-      } catch {
-        // Fallback to initial mock state
+      } catch (err) {
+        console.error("Failed to load placements:", err);
+      } finally {
+        setLoading(false);
       }
     };
 
-    fetchPlacements();
+    fetchPlacementData();
   }, []);
 
   const handleApply = async (e: React.FormEvent) => {
@@ -123,7 +131,6 @@ export default function StudentPlacementPage() {
       setApplyingPlacement(null);
       setCoverLetter("");
     } catch {
-      // Optimistic confirmation for smooth staging flow
       setPlacements((prev) =>
         prev.map((p) => (p.id === applyingPlacement.id ? { ...p, isApplied: true } : p))
       );
@@ -146,13 +153,11 @@ export default function StudentPlacementPage() {
     <StudentLayout>
       <div className="max-w-5xl mx-auto space-y-6">
         
-        {/* Header */}
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Placement Management</h1>
           <p className="text-slate-600 text-sm">Monitor your current industrial placement or browse verified SIWES opportunities</p>
         </div>
 
-        {/* Tab Controls */}
         <div className="flex border-b border-slate-200 gap-6">
           <button
             onClick={() => setActiveTab("current")}
@@ -176,7 +181,6 @@ export default function StudentPlacementPage() {
           </button>
         </div>
 
-        {/* Status notification */}
         {statusMessage && (
           <div
             className={`p-4 rounded-xl flex items-center gap-3 text-sm ${
@@ -190,78 +194,93 @@ export default function StudentPlacementPage() {
           </div>
         )}
 
-        {/* Tab 1: Current Placement */}
-        {activeTab === "current" && (
+        {loading ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 flex items-center justify-center">
+            <Loader2 className="animate-spin mr-2" size={20} />
+            <span>Loading placement details...</span>
+          </div>
+        ) : activeTab === "current" ? (
           <div className="space-y-6">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
-                <div>
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 mb-2">
-                    {currentPlacement.status} ATTACHMENT
-                  </span>
-                  <h2 className="text-xl sm:text-2xl font-bold text-slate-900">{currentPlacement.role}</h2>
-                  <p className="text-slate-600 font-medium text-base mt-0.5">{currentPlacement.companyName}</p>
+            {currentPlacement ? (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+                  <div>
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 mb-2">
+                      {currentPlacement.status} ATTACHMENT
+                    </span>
+                    <h2 className="text-xl sm:text-2xl font-bold text-slate-900">{currentPlacement.role}</h2>
+                    <p className="text-slate-600 font-medium text-base mt-0.5">{currentPlacement.companyName}</p>
+                  </div>
+                  <div className="text-right sm:text-right">
+                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Start Date</p>
+                    <p className="text-sm font-bold text-slate-900">{currentPlacement.startDate}</p>
+                  </div>
                 </div>
-                <div className="text-right sm:text-right">
-                  <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Start Date</p>
-                  <p className="text-sm font-bold text-slate-900">{currentPlacement.startDate}</p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 py-6 border-b border-slate-100">
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Location</p>
+                    <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                      <MapPin className="h-4 w-4 text-[#0015A4]" />
+                      {currentPlacement.location}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Work Mode</p>
+                    <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                      <Building className="h-4 w-4 text-[#0015A4]" />
+                      {currentPlacement.arrangement}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Supervisor</p>
+                    <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                      <Users className="h-4 w-4 text-[#0015A4]" />
+                      {currentPlacement.supervisorName}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Duration</p>
+                    <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                      <Clock className="h-4 w-4 text-[#0015A4]" />
+                      {currentPlacement.duration}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <p className="text-xs text-slate-500">
+                    Supervisor Contact: <span className="text-slate-800 font-mono">{currentPlacement.supervisorEmail}</span>
+                  </p>
+                  <button
+                    onClick={() => setActiveTab("explore")}
+                    className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold transition-colors"
+                  >
+                    View Alternative Placements
+                  </button>
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 py-6 border-b border-slate-100">
-                <div>
-                  <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Location</p>
-                  <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-                    <MapPin className="h-4 w-4 text-[#0015A4]" />
-                    {currentPlacement.location}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Work Mode</p>
-                  <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-                    <Building className="h-4 w-4 text-[#0015A4]" />
-                    {currentPlacement.arrangement}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Supervisor</p>
-                  <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-                    <Users className="h-4 w-4 text-[#0015A4]" />
-                    {currentPlacement.supervisorName}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Duration</p>
-                  <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-                    <Clock className="h-4 w-4 text-[#0015A4]" />
-                    {currentPlacement.duration}
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <p className="text-xs text-slate-500">
-                  Supervisor Email: <span className="text-slate-800 font-mono">{currentPlacement.supervisorEmail}</span>
+            ) : (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center text-slate-500">
+                <Briefcase className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+                <h3 className="text-base font-bold text-slate-800 mb-1">No Active Placement Assigned</h3>
+                <p className="text-sm text-slate-500 max-w-md mx-auto mb-4">
+                  You are not currently linked to an industry partner. Browse available opportunities or request an allocation.
                 </p>
                 <button
                   onClick={() => setActiveTab("explore")}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold transition-colors"
+                  className="px-5 py-2.5 bg-[#0015A4] hover:bg-blue-800 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors"
                 >
-                  View Alternative Placements
+                  Explore Openings
                 </button>
               </div>
-            </div>
+            )}
           </div>
-        )}
-
-        {/* Tab 2: Explore Openings */}
-        {activeTab === "explore" && (
+        ) : (
           <div className="space-y-6">
-            
-            {/* Search Filter */}
             <div className="relative">
               <Search className="h-5 w-5 text-slate-400 absolute left-3.5 top-3" />
               <input
@@ -273,57 +292,60 @@ export default function StudentPlacementPage() {
               />
             </div>
 
-            {/* List */}
-            <div className="grid grid-cols-1 gap-4">
-              {filteredPlacements.map((p) => (
-                <div
-                  key={p.id}
-                  className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6 hover:border-slate-300 transition-all"
-                >
-                  <div className="space-y-2 max-w-2xl">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-bold text-slate-900">{p.title}</h3>
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
-                        {p.workArrangement}
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-[#0015A4]">
-                        {p.remainingSlots} slots left
-                      </span>
+            {filteredPlacements.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500">
+                No placement openings found.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {filteredPlacements.map((p) => (
+                  <div
+                    key={p.id}
+                    className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6 hover:border-slate-300 transition-all"
+                  >
+                    <div className="space-y-2 max-w-2xl">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-bold text-slate-900">{p.title}</h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
+                          {p.workArrangement}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-[#0015A4]">
+                          {p.remainingSlots} slots left
+                        </span>
+                      </div>
+
+                      <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+                        <Building className="h-4 w-4 text-slate-400" />
+                        {p.companyName} &bull; <span className="text-slate-500 font-normal">{p.location}</span>
+                      </p>
+
+                      <p className="text-xs text-slate-600 leading-relaxed">{p.description}</p>
+                      <p className="text-xs text-slate-400">Target Field: {p.departmentScope}</p>
                     </div>
 
-                    <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Building className="h-4 w-4 text-slate-400" />
-                      {p.companyName} &bull; <span className="text-slate-500 font-normal">{p.location}</span>
-                    </p>
-
-                    <p className="text-xs text-slate-600 leading-relaxed">{p.description}</p>
-                    <p className="text-xs text-slate-400">Target Field: {p.departmentScope}</p>
+                    <div className="shrink-0">
+                      {p.isApplied ? (
+                        <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <CheckCircle2 className="h-4 w-4" />
+                          Application Submitted
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setApplyingPlacement(p)}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0015A4] hover:bg-blue-800 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors"
+                        >
+                          <Send className="h-4 w-4" />
+                          Apply Now
+                        </button>
+                      )}
+                    </div>
                   </div>
-
-                  <div className="shrink-0">
-                    {p.isApplied ? (
-                      <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <CheckCircle2 className="h-4 w-4" />
-                        Application Submitted
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => setApplyingPlacement(p)}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0015A4] hover:bg-blue-800 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors"
-                      >
-                        <Send className="h-4 w-4" />
-                        Apply Now
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Application Modal */}
         {applyingPlacement && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
             <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100">

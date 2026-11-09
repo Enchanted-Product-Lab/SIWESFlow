@@ -23,46 +23,7 @@ interface ActivityItem {
 }
 
 export default function StudentLogbookPage() {
-  const [activities, setActivities] = useState<ActivityItem[]>([
-    {
-      id: "act-1",
-      title: "Configured API Rate Limiting & JWT Validation",
-      date: "2026-11-06",
-      hoursWorked: 8,
-      description: "Implemented Redis token bucket rate limiting on public endpoints and configured JWT bearer verification middleware.",
-      whatILearned: "Deep understanding of HTTP 429 response handling and distributed redis cache keys.",
-      skillsUsed: ["Express", "Redis", "TypeScript", "JWT"],
-      category: "Backend Development",
-      status: "APPROVED",
-      supervisorComment: "Solid implementation. Clean error handling and proper status code responses.",
-      rating: 5,
-    },
-    {
-      id: "act-2",
-      title: "Built Student Document Upload Interface",
-      date: "2026-11-07",
-      hoursWorked: 7.5,
-      description: "Constructed drag and drop file upload screen supporting PDF, PNG, and JPEG formats up to 10MB.",
-      whatILearned: "Working with FormData, browser FileReader API, and multipart boundary payloads.",
-      skillsUsed: ["Next.js", "Tailwind CSS", "Axios"],
-      category: "Frontend Development",
-      status: "APPROVED",
-      supervisorComment: "Good work on the file validation UX.",
-      rating: 5,
-    },
-    {
-      id: "act-3",
-      title: "Database Indexing & Prisma Migration Check",
-      date: "2026-11-08",
-      hoursWorked: 6,
-      description: "Audited foreign key relations on Student and Verification tables. Ran migration sanity checks against Postgres.",
-      whatILearned: "Understanding Prisma migrate diff and query plan optimization using EXPLAIN ANALYZE.",
-      skillsUsed: ["PostgreSQL", "Prisma ORM", "SQL"],
-      category: "Database Engineering",
-      status: "PENDING",
-    },
-  ]);
-
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [filter, setFilter] = useState<string>("ALL");
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -78,31 +39,31 @@ export default function StudentLogbookPage() {
     skillsInput: "",
   });
 
-  useEffect(() => {
-    const fetchActivities = async () => {
-      try {
-        const res = await apiClient.get("/activities");
-        if (Array.isArray(res.data) && res.data.length > 0) {
-          const mapped: ActivityItem[] = res.data.map((a: any) => ({
-            id: a.id,
-            title: a.title,
-            date: a.date ? String(a.date).slice(0, 10) : new Date().toISOString().split("T")[0],
-            hoursWorked: Number(a.hoursWorked) || 8,
-            description: a.description || "",
-            whatILearned: a.whatILearned || "",
-            skillsUsed: Array.isArray(a.skillsUsed) ? a.skillsUsed : [],
-            category: a.category || "General",
-            status: a.status || "PENDING",
-            supervisorComment: a.comment || a.supervisorComment || undefined,
-            rating: a.rating || undefined,
-          }));
-          setActivities(mapped);
-        }
-      } catch {
-        // Fallback to local default state
-      }
-    };
+  const fetchActivities = async () => {
+    try {
+      const res = await apiClient.get("/activities");
+      const raw = res.data;
+      const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+      const mapped: ActivityItem[] = list.map((a: any) => ({
+        id: a.id,
+        title: a.title || "Untitled Activity",
+        date: a.date ? String(a.date).slice(0, 10) : new Date().toISOString().split("T")[0],
+        hoursWorked: Number(a.hoursWorked) || 0,
+        description: a.description || "",
+        whatILearned: a.whatILearned || "",
+        skillsUsed: Array.isArray(a.skillsUsed) ? a.skillsUsed : [],
+        category: a.category || "General",
+        status: a.status || "PENDING",
+        supervisorComment: a.comment || a.supervisorComment || undefined,
+        rating: a.rating || undefined,
+      }));
+      setActivities(mapped);
+    } catch {
+      setActivities([]);
+    }
+  };
 
+  useEffect(() => {
     fetchActivities();
   }, []);
 
@@ -153,7 +114,6 @@ export default function StudentLogbookPage() {
         skillsInput: "",
       });
     } catch {
-      // Optimistic fallback for smooth local testing
       const localEntry: ActivityItem = {
         id: `act-${Date.now()}`,
         title: form.title,
@@ -185,7 +145,6 @@ export default function StudentLogbookPage() {
     <StudentLayout>
       <div className="max-w-5xl mx-auto space-y-6">
         
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Logbook & Activity Diary</h1>
@@ -200,7 +159,6 @@ export default function StudentLogbookPage() {
           </button>
         </div>
 
-        {/* Quick Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Hours Logged</p>
@@ -223,7 +181,6 @@ export default function StudentLogbookPage() {
           </div>
         </div>
 
-        {/* Notification Toast */}
         {statusMsg && (
           <div
             className={`p-4 rounded-xl flex items-center gap-3 text-sm ${
@@ -237,7 +194,6 @@ export default function StudentLogbookPage() {
           </div>
         )}
 
-        {/* Filters */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           {["ALL", "APPROVED", "PENDING", "NEEDS_REVISION"].map((st) => (
             <button
@@ -254,7 +210,6 @@ export default function StudentLogbookPage() {
           ))}
         </div>
 
-        {/* Entries List */}
         <div className="space-y-4">
           {filteredActivities.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
@@ -305,7 +260,6 @@ export default function StudentLogbookPage() {
                   </div>
                 )}
 
-                {/* Skills tags */}
                 {act.skillsUsed && act.skillsUsed.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                     <Tag className="h-3.5 w-3.5 text-slate-400 mr-1" />
@@ -320,7 +274,6 @@ export default function StudentLogbookPage() {
                   </div>
                 )}
 
-                {/* Supervisor Feedback Callout */}
                 {act.supervisorComment && (
                   <div className="bg-blue-50 border border-blue-100 p-3.5 rounded-xl flex items-start gap-2.5">
                     <MessageSquare className="h-4 w-4 text-[#0015A4] shrink-0 mt-0.5" />
@@ -335,7 +288,6 @@ export default function StudentLogbookPage() {
           )}
         </div>
 
-        {/* Modal Form */}
         {modalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
             <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">

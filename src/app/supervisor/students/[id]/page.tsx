@@ -1,9 +1,12 @@
 import React from 'react';
 import Link from 'next/link';
-import { mockStudents } from '../../../../data/mock';
+import { notFound } from 'next/navigation';
 import { ArrowLeft, User, Building, FileText } from 'lucide-react';
 import StudentProgressMonitor from '../../../../components/supervisor/StudentProgressMonitor';
 import ReviewActions from '../../../../components/supervisor/ReviewActions';
+import apiClient from '../../../../services/apiClient';
+import { mapBackendStudentToStudent, mapBackendActivityToActivityLog } from '../../../../services/schoolService';
+import { Student, ActivityLog } from '../../../../types';
 
 export default async function StudentDetails({ 
   params 
@@ -12,23 +15,44 @@ export default async function StudentDetails({
 }) {
   const { id } = await params;
   
-  // Fetch the specific student from the mock database
-  const student = mockStudents.find((s) => s.id === id);
+  let student: Student | null = null;
+  let activities: ActivityLog[] = [];
+
+  try {
+    const res = await apiClient.get(`/students/${id}`);
+    if (res.data) {
+      student = mapBackendStudentToStudent(res.data);
+    }
+  } catch (err) {
+    // not found handled below
+  }
 
   if (!student) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600">
-        <h2 className="text-xl font-bold text-slate-900 mb-2">Student Not Found</h2>
-        <Link href="/supervisor/students" className="text-siwes-blue hover:underline">Return to Roster</Link>
-      </div>
-    );
+    notFound();
   }
+
+  try {
+    const actRes = await apiClient.get(`/activities?studentId=${id}`);
+    const raw = Array.isArray(actRes.data) ? actRes.data : (Array.isArray(actRes.data?.data) ? actRes.data.data : []);
+    activities = raw.map(mapBackendActivityToActivityLog);
+  } catch {
+    activities = [];
+  }
+
+  const totalHours = activities
+    .filter(a => a.status === 'approved')
+    .reduce((sum, a) => sum + (Number(a.hoursWorked) || 0), 0);
   
+  const pendingLogs = activities.filter(a => a.status === 'pending');
+  const recentPending = pendingLogs[0];
+  const weeksCompleted = Math.min(24, Math.max(1, Math.round(totalHours / 40)));
+  const progressStatus: 'Active' | 'At-Risk' | 'Inactive' = totalHours > 0 ? 'Active' : 'At-Risk';
+
   return (
     <div className="min-h-screen bg-slate-50 pb-12 font-sans">
       <header className="bg-white border-b border-slate-200 px-6 py-6 shadow-sm">
         <div className="max-w-7xl mx-auto">
-          <Link href="/supervisor/students" className="inline-flex items-center text-sm font-medium text-slate-500 hover:text-siwes-blue mb-4 transition-colors">
+          <Link href="/supervisor/students" className="inline-flex items-center text-sm font-medium text-slate-500 hover:text-teal-600 mb-4 transition-colors">
             <ArrowLeft size={16} className="mr-1" /> Back to My Students
           </Link>
           
@@ -40,18 +64,20 @@ export default async function StudentDetails({
                 • {student.matricNumber || student.id}
               </p>
             </div>
-            <Link 
-              href={`/supervisor/students/${student.id}/logbook`}
-              className="bg-siwes-blue hover:bg-blue-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
-            >
-              Review Full Logbook
-            </Link>
-            <Link 
-    href={`/supervisor/students/${student.id}/completion`}
-    className="bg-siwes-blue hover:bg-blue-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
-  >
-    Verify Completion
-  </Link>
+            <div className="flex items-center gap-3">
+              <Link 
+                href={`/supervisor/students/${student.id}/logbook`}
+                className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+              >
+                Review Full Logbook
+              </Link>
+              <Link 
+                href={`/supervisor/students/${student.id}/completion`}
+                className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+              >
+                Verify Completion
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -64,10 +90,10 @@ export default async function StudentDetails({
             <StudentProgressMonitor 
               studentName={student.name}
               matricNumber={student.matricNumber || student.id}
-              weeksCompleted={8}
+              weeksCompleted={weeksCompleted}
               totalWeeks={24}
-              hoursLogged={320}
-              status="At-Risk"
+              hoursLogged={totalHours}
+              status={progressStatus}
             />
 
             {/* Pending Logs Section */}
@@ -78,22 +104,33 @@ export default async function StudentDetails({
                   Pending Logbook Review
                 </h3>
                 <span className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-semibold">
-                  Recent Submission
+                  {pendingLogs.length} Pending
                 </span>
               </div>
               
-              <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 mb-6">
-                <h4 className="font-semibold text-slate-800 mb-2">Frontend Component Integration</h4>
-                <p className="text-sm text-slate-600 leading-relaxed mb-4">
-                  Completed the integration of the supervisor dashboard metrics. Connected the Next.js App Router to the database schemas to ensure real-time UI updates for student monitoring.
-                </p>
-                <div className="flex gap-2">
-                  <span className="px-2 py-1 bg-white border border-slate-200 rounded text-xs font-medium text-slate-500">React</span>
-                  <span className="px-2 py-1 bg-white border border-slate-200 rounded text-xs font-medium text-slate-500">Next.js</span>
-                </div>
-              </div>
+              {recentPending ? (
+                <div>
+                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 mb-6">
+                    <h4 className="font-semibold text-slate-800 mb-2">{recentPending.title}</h4>
+                    <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                      {recentPending.description || "No description provided."}
+                    </p>
+                    <div className="flex gap-2 flex-wrap">
+                      {recentPending.skillsAcquired.map(skill => (
+                        <span key={skill} className="px-2 py-1 bg-white border border-slate-200 rounded text-xs font-medium text-slate-500">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
 
-              <ReviewActions logId={`log_${student.id}`} />
+                  <ReviewActions logId={recentPending.id} />
+                </div>
+              ) : (
+                <div className="p-8 text-center text-slate-500 text-sm">
+                  No activities currently awaiting review for this student.
+                </div>
+              )}
             </div>
           </div>
 
@@ -101,7 +138,7 @@ export default async function StudentDetails({
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
               <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                <User size={16} className="text-siwes-blue"/> Academic Profile
+                <User size={16} className="text-teal-600"/> Academic Profile
               </h2>
               <div className="space-y-4 text-sm">
                 <div>
@@ -121,16 +158,16 @@ export default async function StudentDetails({
 
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
               <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                <Building size={16} className="text-siwes-blue"/> Placement Details
+                <Building size={16} className="text-teal-600"/> Placement Details
               </h2>
               <div className="space-y-4 text-sm">
                 <div>
                   <p className="text-xs text-slate-500 mb-1">Assigned Company</p>
-                  <p className="font-medium text-slate-900">{student.placementCompany}</p>
+                  <p className="font-medium text-slate-900">{student.placementCompany || "Company Attachment"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 mb-1">Role / Unit</p>
-                  <p className="font-medium text-slate-900">IT Trainee</p>
+                  <p className="font-medium text-slate-900">SIWES Intern</p>
                 </div>
               </div>
             </div>

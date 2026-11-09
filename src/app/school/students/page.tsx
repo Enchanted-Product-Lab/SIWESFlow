@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
-import { mockActivityLogs, mockStudents } from "@/data/mock";
 import { Student, ActivityLog } from "@/types";
 import { fetchStudentsWithFallback, fetchActivitiesWithFallback } from "@/services/schoolService";
 
@@ -56,8 +55,8 @@ function FilterField({
 }
 
 export default function SchoolStudentsPage() {
-  const [students, setStudents] = useState<Student[]>(mockStudents);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(mockActivityLogs);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

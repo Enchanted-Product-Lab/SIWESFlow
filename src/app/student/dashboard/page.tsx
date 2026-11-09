@@ -12,25 +12,27 @@ import {
 export default function StudentDashboardPage() {
   const [studentName, setStudentName] = useState("Student");
   const [stats, setStats] = useState({
-    activePlacements: 1,
-    logbookEntries: 3,
-    hoursWorked: 21.5,
-    durationPercentage: 40,
-    placementCompany: "TechNova Solutions",
-    placementRole: "Frontend Development Intern",
-    placementLocation: "Lagos, Nigeria",
-    placementMode: "Remote / Hybrid",
+    activePlacements: 0,
+    logbookEntries: 0,
+    hoursWorked: 0,
+    durationPercentage: 0,
+    placementCompany: "No Placement Assigned",
+    placementRole: "Awaiting Placement",
+    placementLocation: "Not Specified",
+    placementMode: "N/A",
   });
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        // Fetch student profile
         const profileRes = await apiClient.get("/students/me");
-        if (profileRes.data?.firstName) {
-          setStudentName(profileRes.data.firstName);
-        } else if (profileRes.data?.fullName) {
-          setStudentName(profileRes.data.fullName.split(" ")[0]);
+        const s = profileRes.data;
+        if (s?.firstName) {
+          setStudentName(s.firstName);
+        } else if (s?.user?.name) {
+          setStudentName(s.user.name.split(" ")[0]);
+        } else if (s?.fullName) {
+          setStudentName(s.fullName.split(" ")[0]);
         }
       } catch {
         if (typeof window !== "undefined") {
@@ -43,37 +45,36 @@ export default function StudentDashboardPage() {
       }
 
       try {
-        // Fetch activities
         const actRes = await apiClient.get("/activities");
-        if (Array.isArray(actRes.data) && actRes.data.length > 0) {
-          const hours = actRes.data.reduce((sum: number, a: { hoursWorked?: string | number }) => sum + (Number(a.hoursWorked) || 0), 0);
-          const pct = Math.min(100, Math.max(10, Math.round((hours / 480) * 100)));
-          setStats((prev) => ({
-            ...prev,
-            logbookEntries: actRes.data.length,
-            hoursWorked: hours,
-            durationPercentage: pct,
-          }));
-        }
+        const actList = Array.isArray(actRes.data) ? actRes.data : (Array.isArray(actRes.data?.data) ? actRes.data.data : []);
+        const hours = actList.reduce((sum: number, a: { hoursWorked?: string | number }) => sum + (Number(a.hoursWorked) || 0), 0);
+        const pct = actList.length > 0 ? Math.min(100, Math.round((hours / 480) * 100)) : 0;
+        setStats((prev) => ({
+          ...prev,
+          logbookEntries: actList.length,
+          hoursWorked: hours,
+          durationPercentage: pct,
+        }));
       } catch {
-        // Retain default stats
+        // Safe empty state
       }
 
       try {
-        // Fetch placements
         const placeRes = await apiClient.get("/placements");
-        if (Array.isArray(placeRes.data) && placeRes.data.length > 0) {
-          const first = placeRes.data[0];
+        const placeList = Array.isArray(placeRes.data) ? placeRes.data : (Array.isArray(placeRes.data?.data) ? placeRes.data.data : []);
+        if (placeList.length > 0) {
+          const first = placeList[0];
           setStats((prev) => ({
             ...prev,
-            placementCompany: first.company?.name || first.companyName || prev.placementCompany,
-            placementRole: first.title || first.role || prev.placementRole,
-            placementLocation: first.location || prev.placementLocation,
-            placementMode: first.workArrangement || first.mode || prev.placementMode,
+            activePlacements: placeList.filter((p: any) => p.status === 'ACTIVE' || p.status === 'APPROVED' || !p.status).length,
+            placementCompany: first.company?.name || first.companyName || "Assigned Company",
+            placementRole: first.title || first.role || "SIWES Intern",
+            placementLocation: first.location || "On-site",
+            placementMode: first.workArrangement || first.mode || "Standard",
           }));
         }
       } catch {
-        // Retain default stats
+        // Safe empty state
       }
     };
 
@@ -84,7 +85,7 @@ export default function StudentDashboardPage() {
     <StudentLayout>
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Left Column (Spans 2/3 on large screens) */}
+        {/* Left Column */}
         <div className="lg:col-span-2 space-y-8">
           
           {/* Greeting */}
@@ -193,7 +194,7 @@ export default function StudentDashboardPage() {
 
         </div>
 
-        {/* Right Column (Spans 1/3 on large screens) */}
+        {/* Right Column */}
         <div className="space-y-6">
           
           {/* Progress Widget */}

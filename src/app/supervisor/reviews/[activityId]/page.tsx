@@ -1,10 +1,12 @@
 import React from 'react';
 import Link from 'next/link';
-import { mockActivityLogs, mockStudents } from '../../../../data/mock';
+import { notFound } from 'next/navigation';
 import { ActivityLog, Student } from '../../../../types';
 import EvidenceViewer from '../../../../components/supervisor/EvidenceViewer';
 import FeedbackForm from '../../../../components/supervisor/FeedbackForm';
 import { ArrowLeft, Calendar, Clock } from 'lucide-react';
+import apiClient from '../../../../services/apiClient';
+import { mapBackendActivityToActivityLog, mapBackendStudentToStudent } from '../../../../services/schoolService';
 
 export default async function ActivityReviewPage({ 
   params 
@@ -13,28 +15,47 @@ export default async function ActivityReviewPage({
 }) {
   const { activityId } = await params;
 
-  // 1. Resolve alias or exact match
-  let normalizedId = activityId;
-  if (activityId.toLowerCase() === 'act-1') normalizedId = 'LOG-101';
-  if (activityId.toLowerCase() === 'act-2') normalizedId = 'LOG-102';
-  if (activityId.toLowerCase() === 'act-3') normalizedId = 'LOG-103';
+  let log: ActivityLog | null = null;
+  let student: Student | null = null;
 
-  // 2. Lookup in mock logs or generate populated fallback
-  const foundLog = mockActivityLogs.find(l => l.id.toLowerCase() === normalizedId.toLowerCase());
-  
-  const log: ActivityLog = foundLog || {
-    id: activityId,
-    studentId: "STU-001",
-    date: new Date().toISOString().split('T')[0],
-    title: "Full-Stack Feature Implementation & API Review",
-    description: "Implemented reactive student dashboard, verification endpoints, and integrated supervisor feedback loop.",
-    hoursWorked: 8,
-    skillsAcquired: ["Next.js", "TypeScript", "Tailwind CSS", "REST API"],
-    evidenceUrls: ["/mock-evidence-1.jpg"],
-    status: "pending",
-  };
+  try {
+    const res = await apiClient.get(`/activities/${activityId}`);
+    if (res.data) {
+      log = mapBackendActivityToActivityLog(res.data);
+      if (res.data.student) {
+        student = mapBackendStudentToStudent(res.data.student);
+      }
+    }
+  } catch (_err) {
+    // Handled below
+  }
 
-  const student: Student = mockStudents.find(s => s.id === log.studentId) || mockStudents[0];
+  if (!log) {
+    notFound();
+  }
+
+  if (!student && log.studentId) {
+    try {
+      const sRes = await apiClient.get(`/students/${log.studentId}`);
+      if (sRes.data) {
+        student = mapBackendStudentToStudent(sRes.data);
+      }
+    } catch {
+      // Graceful student fallback
+    }
+  }
+
+  if (!student) {
+    student = {
+      id: log.studentId || 'unknown',
+      name: 'Assigned Student',
+      matricNumber: 'N/A',
+      university: 'SIWES Institution',
+      department: 'General',
+      level: '300 Level',
+      placementCompany: 'Partner Company',
+    };
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 sm:p-8 font-sans">
@@ -118,11 +139,11 @@ export default async function ActivityReviewPage({
                 <p className="text-slate-700"><strong className="text-slate-900">Matric No:</strong> {student.matricNumber}</p>
                 <p className="text-slate-700"><strong className="text-slate-900">Level:</strong> {student.level}</p>
                 <p className="text-slate-700"><strong className="text-slate-900">Institution:</strong> {student.university}</p>
-                <p className="text-slate-700"><strong className="text-slate-900">Company:</strong> {student.placementCompany}</p>
+                <p className="text-slate-700"><strong className="text-slate-900">Company:</strong> {student.placementCompany || 'Not Assigned'}</p>
               </div>
             </div>
 
-            {/* Supervisor Action Card (Client Component) */}
+            {/* Supervisor Action Card */}
             <FeedbackForm activityId={activityId} />
 
           </div>

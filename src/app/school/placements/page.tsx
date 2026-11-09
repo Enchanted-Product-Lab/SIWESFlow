@@ -4,12 +4,11 @@ import Link from "next/link";
 
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
 import { useEffect, useMemo, useState } from "react";
-import { mockStudents } from "@/data/mock";
 import { Student } from "@/types";
 import { fetchStudentsWithFallback } from "@/services/schoolService";
 
 export default function SchoolPlacementsPage() {
-  const [students, setStudents] = useState<Student[]>(mockStudents);
+  const [students, setStudents] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "placed" | "unplaced">("all");
   const [isLoading, setIsLoading] = useState(true);

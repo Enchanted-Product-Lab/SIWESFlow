@@ -1,8 +1,11 @@
 import React from 'react';
 import Link from 'next/link';
-import { mockStudents, mockActivityLogs } from '../../../../../data/mock';
+import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import CompletionVerification from '../../../../../components/supervisor/CompletionVerification';
+import apiClient from '../../../../../services/apiClient';
+import { mapBackendStudentToStudent, mapBackendActivityToActivityLog } from '../../../../../services/schoolService';
+import { Student, ActivityLog } from '../../../../../types';
 
 export default async function CompletionPage({ 
   params 
@@ -11,18 +14,32 @@ export default async function CompletionPage({
 }) {
   const { id } = await params;
   
-  const student = mockStudents.find((s) => s.id === id);
-  // Calculate total hours from mock logs
-  const studentLogs = mockActivityLogs.filter((log) => log.studentId === id && log.status === 'approved');
-  const totalHours = studentLogs.reduce((acc, log) => acc + log.hoursWorked, 0);
+  let student: Student | null = null;
+  let activities: ActivityLog[] = [];
+
+  try {
+    const res = await apiClient.get(`/students/${id}`);
+    if (res.data) {
+      student = mapBackendStudentToStudent(res.data);
+    }
+  } catch {
+    student = null;
+  }
 
   if (!student) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-600">Student not found.</p>
-      </div>
-    );
+    notFound();
   }
+
+  try {
+    const actRes = await apiClient.get(`/activities?studentId=${id}`);
+    const raw = Array.isArray(actRes.data) ? actRes.data : (Array.isArray(actRes.data?.data) ? actRes.data.data : []);
+    activities = raw.map(mapBackendActivityToActivityLog);
+  } catch {
+    activities = [];
+  }
+
+  const studentLogs = activities.filter((log) => log.status === 'approved');
+  const totalHours = studentLogs.reduce((acc, log) => acc + (Number(log.hoursWorked) || 0), 0);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-12 font-sans">
@@ -40,11 +57,10 @@ export default async function CompletionPage({
       </header>
 
       <main className="max-w-4xl mx-auto px-6 mt-8">
-        {/* Mount the component we just built */}
         <CompletionVerification 
           studentName={student.name}
           matricNumber={student.matricNumber || student.id}
-          totalHoursLogged={totalHours > 0 ? totalHours : 960} // Forcing 960 for UI testing if mock data is low
+          totalHoursLogged={totalHours}
         />
       </main>
     </div>

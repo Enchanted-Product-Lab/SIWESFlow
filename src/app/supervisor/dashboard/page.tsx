@@ -5,13 +5,12 @@ import Link from 'next/link';
 import { Menu } from 'lucide-react';
 import DashboardMetrics from '../../../components/supervisor/DashboardMetrics';
 import RecentActivityTable from '../../../components/supervisor/RecentActivityTable';
-import { mockStudents, mockActivityLogs } from '../../../data/mock';
 import apiClient from '../../../services/apiClient';
 
 export default function SupervisorDashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [logs, setLogs] = useState(mockActivityLogs);
-  const [students, setStudents] = useState(mockStudents);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
 
   useEffect(() => {
     async function loadData() {
@@ -20,17 +19,18 @@ export default function SupervisorDashboard() {
           apiClient.get('/activities'),
           apiClient.get('/students'),
         ]);
-        if (actRes.status === 'fulfilled' && Array.isArray(actRes.value.data) && actRes.value.data.length > 0) {
-          setLogs(actRes.value.data);
+        if (actRes.status === 'fulfilled') {
+          const raw = actRes.value.data;
+          const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+          setLogs(list);
         }
         if (stuRes.status === 'fulfilled') {
-          const list = Array.isArray(stuRes.value.data) ? stuRes.value.data : stuRes.value.data?.students;
-          if (Array.isArray(list) && list.length > 0) {
-            setStudents(list);
-          }
+          const raw = stuRes.value.data;
+          const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw?.students) ? raw.students : []));
+          setStudents(list);
         }
-      } catch {
-        // Fall back cleanly to mock fixtures if unauthenticated or offline
+      } catch (err) {
+        console.error('Failed to load supervisor dashboard data:', err);
       }
     }
     loadData();
