@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Calendar, Clock, FileText, Paperclip } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, FileText } from 'lucide-react';
 import ReviewActionPanel from '../../../../../../components/supervisor/ReviewActionPanel';
-import { getEvidenceUrl, type EvidenceMetadata } from '../../../../../../services/api';
+import EvidenceViewer, { EvidenceMetadata } from '../../../../../../components/supervisor/EvidenceViewer';
 
 type UIActivityStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION';
 
@@ -15,11 +15,9 @@ interface ReviewActionPayload {
   rating?: number;
 }
 
-// Updated to match Ajibola's strict schema
 const mockEntry = {
   id: 'act_101',
   studentName: 'David Ibrahim',
-  // matriculationNumber is intentionally omitted per Ajibola
   date: '2026-10-12',
   hours: 8,
   department: 'Software Engineering',
@@ -38,66 +36,6 @@ const mockEntry = {
   ] as EvidenceMetadata[]
 };
 
-// New EvidenceViewer component sits right here in the same file!
-function EvidenceViewer({ evidence }: { evidence: EvidenceMetadata }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let isMounted = true;
-    
-    // Fetch the 300-second expiring URL directly on render per Ajibola's spec
-    getEvidenceUrl(evidence.documentId)
-      .then((res) => {
-        if (isMounted) {
-          setUrl(res.url);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        console.error("Evidence fetch failed:", err);
-        if (isMounted) {
-          setError(true);
-          setLoading(false);
-        }
-      });
-
-    return () => { isMounted = false; };
-  }, [evidence.documentId]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 bg-slate-100 text-slate-500 px-4 py-2 rounded-lg text-sm font-medium animate-pulse w-fit">
-        <Paperclip size={18} /> Loading secure link...
-      </div>
-    );
-  }
-
-  if (error || !url) {
-    return (
-      <div className="flex items-center gap-2 bg-rose-50 text-rose-600 px-4 py-2 rounded-lg text-sm font-medium w-fit">
-        <Paperclip size={18} /> Failed to load evidence
-      </div>
-    );
-  }
-
-  return (
-    <a 
-      href={url} 
-      target="_blank" 
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-2 text-siwes-blue hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg font-medium transition-colors"
-    >
-      <Paperclip size={18} />
-      {evidence.fileName} <span className="text-slate-400 text-xs font-normal">
-        ({(evidence.fileSizeBytes / 1024 / 1024).toFixed(2)} MB)
-      </span>
-    </a>
-  );
-}
-
-// Main page component
 export default function ActivityReviewPage() {
   const params = useParams();
   const router = useRouter(); 
@@ -106,10 +44,7 @@ export default function ActivityReviewPage() {
 
   const handleReviewSubmission = (payload: ReviewActionPayload) => {
     console.log('Sprint 1 Mock - Payload ready for Backend:', payload);
-    
-    // Update local UI state to show the panel's success state directly
     setActivityStatus(payload.action);
-    
     alert(`Review submitted successfully! Action: ${payload.action}`);
   };
 
@@ -119,7 +54,7 @@ export default function ActivityReviewPage() {
         <div className="max-w-4xl mx-auto">
           <Link 
             href={`/supervisor/students/${params.id}`} 
-            className="inline-flex items-center text-sm font-medium text-slate-500 hover:text-siwes-blue mb-4 transition-colors"
+            className="inline-flex items-center text-sm font-medium text-slate-500 hover:text-teal-600 mb-4 transition-colors"
           >
             <ArrowLeft size={16} className="mr-1" /> Back to Logbook
           </Link>
@@ -171,12 +106,8 @@ export default function ActivityReviewPage() {
 
           {mockEntry.evidence && mockEntry.evidence.length > 0 && (
             <div>
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-2">Attached Evidence</h3>
-              <div className="flex flex-wrap gap-3">
-                {mockEntry.evidence.map((item) => (
-                  <EvidenceViewer key={item.documentId} evidence={item} />
-                ))}
-              </div>
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">Evidence Attached</h3>
+              <EvidenceViewer attachments={mockEntry.evidence} />
             </div>
           )}
         </div>

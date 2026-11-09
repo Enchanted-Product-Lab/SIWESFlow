@@ -5,7 +5,7 @@ import StudentLayout from "@/components/student/StudentLayout";
 import apiClient from "@/services/apiClient";
 import { 
   BookOpen, Plus, Calendar, Clock, CheckCircle2, 
-  AlertCircle, MessageSquare, Tag, Filter, ChevronRight
+  MessageSquare, Tag 
 } from "lucide-react";
 
 interface ActivityItem {
@@ -18,6 +18,22 @@ interface ActivityItem {
   skillsUsed?: string[];
   category?: string;
   status: "PENDING" | "APPROVED" | "NEEDS_REVISION";
+  supervisorComment?: string;
+  rating?: number;
+}
+
+// Interface for raw API responses from GET /activities
+interface RawActivityItem {
+  id: string;
+  title: string;
+  date?: string | Date;
+  hoursWorked?: number | string;
+  description?: string;
+  whatILearned?: string;
+  skillsUsed?: string[];
+  category?: string;
+  status?: "PENDING" | "APPROVED" | "NEEDS_REVISION";
+  comment?: string;
   supervisorComment?: string;
   rating?: number;
 }
@@ -81,9 +97,9 @@ export default function StudentLogbookPage() {
   useEffect(() => {
     const fetchActivities = async () => {
       try {
-        const res = await apiClient.get("/activities");
+        const res = await apiClient.get<RawActivityItem[]>("/activities");
         if (Array.isArray(res.data) && res.data.length > 0) {
-          const mapped: ActivityItem[] = res.data.map((a: any) => ({
+          const mapped: ActivityItem[] = res.data.map((a: RawActivityItem) => ({
             id: a.id,
             title: a.title,
             date: a.date ? String(a.date).slice(0, 10) : new Date().toISOString().split("T")[0],
@@ -127,7 +143,7 @@ export default function StudentLogbookPage() {
     };
 
     try {
-      const res = await apiClient.post("/activities", payload);
+      const res = await apiClient.post<{ id?: string }>("/activities", payload);
       const newEntry: ActivityItem = {
         id: res.data?.id || `act-${Date.now()}`,
         title: form.title,

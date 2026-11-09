@@ -1,10 +1,22 @@
 import React from 'react';
 import Link from 'next/link';
 import { mockActivityLogs, mockStudents } from '../../../../data/mock';
-import { ActivityLog, Student } from '../../../../types';
-import EvidenceViewer from '../../../../components/supervisor/EvidenceViewer';
+import { Student } from '../../../../types';
+import EvidenceViewer, { EvidenceMetadata } from '../../../../components/supervisor/EvidenceViewer';
 import FeedbackForm from '../../../../components/supervisor/FeedbackForm';
 import { ArrowLeft, Calendar, Clock } from 'lucide-react';
+
+interface LocalActivityLog {
+  id: string;
+  studentId: string;
+  date: string;
+  title: string;
+  description: string;
+  hoursWorked: number;
+  skillsAcquired: string[];
+  evidence: EvidenceMetadata[];
+  status: string;
+}
 
 export default async function ActivityReviewPage({ 
   params 
@@ -13,25 +25,25 @@ export default async function ActivityReviewPage({
 }) {
   const { activityId } = await params;
 
-  // 1. Resolve alias or exact match
   let normalizedId = activityId;
   if (activityId.toLowerCase() === 'act-1') normalizedId = 'LOG-101';
   if (activityId.toLowerCase() === 'act-2') normalizedId = 'LOG-102';
   if (activityId.toLowerCase() === 'act-3') normalizedId = 'LOG-103';
 
-  // 2. Lookup in mock logs or generate populated fallback
   const foundLog = mockActivityLogs.find(l => l.id.toLowerCase() === normalizedId.toLowerCase());
   
-  const log: ActivityLog = foundLog || {
-    id: activityId,
-    studentId: "STU-001",
-    date: new Date().toISOString().split('T')[0],
-    title: "Full-Stack Feature Implementation & API Review",
-    description: "Implemented reactive student dashboard, verification endpoints, and integrated supervisor feedback loop.",
-    hoursWorked: 8,
-    skillsAcquired: ["Next.js", "TypeScript", "Tailwind CSS", "REST API"],
-    evidenceUrls: ["/mock-evidence-1.jpg"],
-    status: "pending",
+  const log: LocalActivityLog = {
+    id: foundLog?.id || activityId,
+    studentId: foundLog?.studentId || "STU-001",
+    date: foundLog?.date || new Date().toISOString().split('T')[0],
+    title: foundLog?.title || "Full-Stack Feature Implementation & API Review",
+    description: foundLog?.description || "Implemented reactive student dashboard, verification endpoints, and integrated supervisor feedback loop.",
+    hoursWorked: foundLog?.hoursWorked || 8,
+    skillsAcquired: foundLog?.skillsAcquired || ["Next.js", "TypeScript", "Tailwind CSS", "REST API"],
+    evidence: [
+      { documentId: 'doc_99283', fileName: 'auth_flow_diagram.pdf', fileSizeBytes: 1048576 }
+    ],
+    status: foundLog?.status || "pending",
   };
 
   const student: Student = mockStudents.find(s => s.id === log.studentId) || mockStudents[0];
@@ -99,30 +111,27 @@ export default async function ActivityReviewPage({
               {/* Evidence Viewer Section */}
               <div className="pt-6 border-t border-slate-100">
                 <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">Evidence Attached</h3>
-                <EvidenceViewer urls={log.evidenceUrls} />
+                <EvidenceViewer attachments={log.evidence} />
               </div>
-
             </div>
           </div>
 
           {/* Right Column: Student Info & Actions */}
           <div className="space-y-6">
             
-            {/* Student Context Card */}
+            {/* Student Context Card (Matric No Hidden per Supervisor Rules) */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">
                 Student Profile
               </h3>
               <div className="space-y-3 text-sm">
                 <p className="text-slate-700"><strong className="text-slate-900">Name:</strong> {student.name}</p>
-                <p className="text-slate-700"><strong className="text-slate-900">Matric No:</strong> {student.matricNumber}</p>
                 <p className="text-slate-700"><strong className="text-slate-900">Level:</strong> {student.level}</p>
                 <p className="text-slate-700"><strong className="text-slate-900">Institution:</strong> {student.university}</p>
                 <p className="text-slate-700"><strong className="text-slate-900">Company:</strong> {student.placementCompany}</p>
               </div>
             </div>
 
-            {/* Supervisor Action Card (Client Component) */}
             <FeedbackForm activityId={activityId} />
 
           </div>
