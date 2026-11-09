@@ -24,7 +24,7 @@ export default function StudentsPage() {
     const hasApprovedHours = studentLogs.some((log) => log.status === 'approved' && log.hoursWorked > 0);
 
     // CORRECTED PRIORITY: Pending Review > At Risk > Active
-    let currentStatus = 'Active';
+    let currentStatus: 'Active' | 'Pending Review' | 'At Risk' = 'Active';
     if (hasPendingLogs) {
       currentStatus = 'Pending Review'; // Top priority: requires supervisor action
     } else if (!hasApprovedHours) {
