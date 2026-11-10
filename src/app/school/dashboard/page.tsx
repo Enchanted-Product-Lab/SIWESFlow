@@ -1,37 +1,63 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
 import { Student, ActivityLog } from "@/types";
-import { fetchStudentsWithFallback, fetchActivitiesWithFallback } from "@/services/schoolService";
+import {
+  fetchStudentsWithFallback,
+  fetchActivitiesWithFallback,
+  getSchoolApiErrorMessage,
+} from "@/services/schoolService";
 
 export default function SchoolDashboardPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [studentsError, setStudentsError] = useState<string | null>(null);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    const [studentsResult, activitiesResult] = await Promise.allSettled([
+      fetchStudentsWithFallback(),
+      fetchActivitiesWithFallback(),
+    ]);
+
+    if (studentsResult.status === "fulfilled") {
+      setStudents(studentsResult.value);
+      setStudentsError(null);
+    } else {
+      setStudentsError(
+        getSchoolApiErrorMessage(studentsResult.reason),
+      );
+    }
+
+    if (activitiesResult.status === "fulfilled") {
+      setActivityLogs(activitiesResult.value);
+      setActivitiesError(null);
+    } else {
+      setActivitiesError(
+        getSchoolApiErrorMessage(activitiesResult.reason),
+      );
+    }
+
+    setIsLoading(false);
+  }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    async function loadData() {
-      try {
-        const [liveStudents, liveLogs] = await Promise.all([
-          fetchStudentsWithFallback(),
-          fetchActivitiesWithFallback(),
-        ]);
-        if (isMounted) {
-          setStudents(liveStudents);
-          setActivityLogs(liveLogs);
-        }
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-    loadData();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const timeoutId = window.setTimeout(() => {
+    void loadData();
+  }, 0);
+
+  return () => {
+    window.clearTimeout(timeoutId);
+  };
+}, [loadData]);
+
+  const handleRetry = () => {
+    setIsLoading(true);
+    void loadData();
+  };
 
   const totalStudents = students.length;
 
@@ -176,9 +202,7 @@ export default function SchoolDashboardPage() {
         {/* Top bar */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
           <div>
-            <p className="text-xs font-medium text-slate-500">
-              School Dashboard
-            </p>
+
           </div>
 
           <div className="flex items-center gap-4">
@@ -241,7 +265,7 @@ export default function SchoolDashboardPage() {
               SIWES Monitoring
             </p>
 
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#10195c] sm:text-3xl">
+           <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#10195c] sm:text-3xl">
               Good morning, Coordinator
             </h1>
 
@@ -250,6 +274,44 @@ export default function SchoolDashboardPage() {
               activity.
             </p>
           </section>
+
+                      {(studentsError || activitiesError) && (
+            <div
+              role="alert"
+              className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-red-800">
+                    Some dashboard information could not be loaded.
+                  </p>
+
+                  {studentsError && (
+                    <p className="mt-1 text-xs text-red-700">
+                      Students: {studentsError}
+                    </p>
+                  )}
+
+                  {activitiesError && (
+                    <p className="mt-1 text-xs text-red-700">
+                      Activities: {activitiesError}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  disabled={isLoading}
+                  className="shrink-0 rounded-lg bg-red-700 px-4 py-2 text-xs font-medium text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoading ? "Retrying..." : "Try again"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_250px]"></div>
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_250px]">
             <div>
@@ -338,8 +400,21 @@ export default function SchoolDashboardPage() {
                 </div>
 
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div className="divide-y divide-slate-100">
-                    {students.slice(0, 3).map((student) => {
+                                    <div className="divide-y divide-slate-100">
+                    {studentsError ? (
+                      <p className="px-4 py-8 text-center text-sm text-red-600">
+                        Student information is unavailable.
+                      </p>
+                    ) : isLoading ? (
+                      <p className="px-4 py-8 text-center text-sm text-slate-500">
+                        Loading students...
+                      </p>
+                    ) : students.length === 0 ? (
+                      <p className="px-4 py-8 text-center text-sm text-slate-500">
+                        No students found.
+                      </p>
+                    ) : (
+                      students.slice(0, 3).map((student) => {
                       const hasActivity = activeStudentIds.has(student.id);
 
                       return (
@@ -386,7 +461,8 @@ export default function SchoolDashboardPage() {
                           </div>
                         </Link>
                       );
-                    })}
+                    })
+                  )}
                   </div>
                 </div>
               </section>
@@ -402,7 +478,7 @@ export default function SchoolDashboardPage() {
                   </h2>
 
                   <span className="text-xs font-medium text-[#1729c7]">
-                    {placementCoverage}%
+                    {studentsError ? "—" : `${placementCoverage}%`}
                   </span>
                 </div>
 
@@ -410,12 +486,12 @@ export default function SchoolDashboardPage() {
                   <div
                     className="relative flex h-32 w-32 items-center justify-center rounded-full"
                     style={{
-                      background: `conic-gradient(#1729c7 ${placementCoverage}%, #e8eaff ${placementCoverage}% 100%)`,
+                      background: `conic-gradient(#1729c7 ${studentsError ? "—" : `${placementCoverage}%`}, #e8eaff ${studentsError ? "—" : `${placementCoverage}%`} 100%)`,
                     }}
                   >
                     <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-white">
                       <span className="text-xl font-semibold text-[#10195c]">
-                        {placementCoverage}%
+                        {studentsError ? "—" : `${placementCoverage}%`}
                       </span>
 
                       <span className="text-[10px] text-slate-500">
@@ -426,8 +502,9 @@ export default function SchoolDashboardPage() {
                 </div>
 
                 <p className="mt-4 text-center text-xs leading-5 text-slate-500">
-                  {placedStudents} of {totalStudents} students currently have
-                  placements.
+                  {studentsError
+  ? "Placement information is currently unavailable."
+  : `${placedStudents} of ${totalStudents} students currently have placements.`}
                 </p>
 
                 <Link

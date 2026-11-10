@@ -1,15 +1,18 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
 import { Student, ActivityLog } from "@/types";
-import { fetchStudentsWithFallback, fetchActivitiesWithFallback } from "@/services/schoolService";
+import {
+  fetchStudentsWithFallback,
+  fetchActivitiesWithFallback,
+  getSchoolApiErrorMessage,
+} from "@/services/schoolService";
 
 type PlacementFilter = "all" | "placed" | "unplaced";
 type ActivityFilter = "all" | "active" | "no-activity";
-
 
 const selectClassName =
   "w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100";
@@ -58,26 +61,50 @@ export default function SchoolStudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [studentsError, setStudentsError] = useState<string | null>(null);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    const [studentsResult, activitiesResult] = await Promise.allSettled([
+      fetchStudentsWithFallback(),
+      fetchActivitiesWithFallback(),
+    ]);
+
+    if (studentsResult.status === "fulfilled") {
+      setStudents(studentsResult.value);
+      setStudentsError(null);
+    } else {
+      setStudentsError(
+        getSchoolApiErrorMessage(studentsResult.reason),
+      );
+    }
+
+    if (activitiesResult.status === "fulfilled") {
+      setActivityLogs(activitiesResult.value);
+      setActivitiesError(null);
+    } else {
+      setActivitiesError(
+        getSchoolApiErrorMessage(activitiesResult.reason),
+      );
+    }
+
+    setIsLoading(false);
+  }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    async function loadData() {
-      try {
-        const [liveStudents, liveLogs] = await Promise.all([
-          fetchStudentsWithFallback(),
-          fetchActivitiesWithFallback(),
-        ]);
-        if (isMounted) {
-          setStudents(liveStudents);
-          setActivityLogs(liveLogs);
-        }
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-    loadData();
-    return () => { isMounted = false; };
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [loadData]);
+
+  const handleRetry = () => {
+    setIsLoading(true);
+    void loadData();
+  };
 
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState("all");
@@ -90,18 +117,24 @@ export default function SchoolStudentsPage() {
 
   const activeStudentIds = useMemo(
     () => new Set(activityLogs.map((activityLog) => activityLog.studentId)),
-    [activityLogs]
+    [activityLogs],
   );
 
   const totalStudents = students.length;
+
   const placedStudents = students.filter(
     (student) => student.placementCompany.trim().length > 0,
   ).length;
+
   const unplacedStudents = totalStudents - placedStudents;
 
   const departments = useMemo(
     () =>
-      [...new Set(students.map((student) => student.department).filter(Boolean))].sort(),
+      [
+        ...new Set(
+          students.map((student) => student.department).filter(Boolean),
+        ),
+      ].sort(),
     [students],
   );
 
@@ -158,6 +191,7 @@ export default function SchoolStudentsPage() {
         (placementStatus === "unplaced" && !hasPlacement);
 
       const matchesActivity =
+        Boolean(activitiesError) ||
         activityStatus === "all" ||
         (activityStatus === "active" && hasActivity) ||
         (activityStatus === "no-activity" && !hasActivity);
@@ -172,12 +206,15 @@ export default function SchoolStudentsPage() {
       );
     });
   }, [
+    students,
+    activeStudentIds,
     search,
     department,
     level,
     company,
     placementStatus,
     activityStatus,
+    activitiesError,
   ]);
 
   const hasActiveFilters =
@@ -205,9 +242,12 @@ export default function SchoolStudentsPage() {
         {/* Top bar */}
         <div className="mb-8 flex items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-medium text-slate-500">
-              School Portal / Student Management
-            </p>
+            <Link
+  href="/school/dashboard"
+  className="text-xs font-bold text-slate-700 transition-colors hover:text-blue-600"
+>
+  School Portal / Student Management
+</Link>
           </div>
 
           <div className="flex items-center gap-3">
@@ -265,14 +305,51 @@ export default function SchoolStudentsPage() {
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             <span className="text-sm text-slate-600">
               <strong className="font-semibold text-slate-800">
-                {totalStudents}
+                {studentsError ? "—" : totalStudents}
               </strong>{" "}
               total students
             </span>
           </div>
         </section>
 
-        {/* Summary cards: always reflect the full dataset */}
+        {/* API error messages and retry */}
+        {(studentsError || activitiesError) && (
+          <div
+            role="alert"
+            className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-red-800">
+                  Some student information could not be loaded.
+                </p>
+
+                {studentsError && (
+                  <p className="mt-1 text-xs text-red-700">
+                    Students: {studentsError}
+                  </p>
+                )}
+
+                {activitiesError && (
+                  <p className="mt-1 text-xs text-red-700">
+                    Activities: {activitiesError}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleRetry}
+                disabled={isLoading}
+                className="shrink-0 rounded-lg bg-red-700 px-4 py-2 text-xs font-medium text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoading ? "Retrying..." : "Try again"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Summary cards */}
         <section
           aria-label="Student summary"
           className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3"
@@ -284,7 +361,7 @@ export default function SchoolStudentsPage() {
                   Total Students
                 </p>
                 <p className="mt-3 text-3xl font-bold text-[#10195c]">
-                  {totalStudents}
+                  {studentsError ? "—" : totalStudents}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
                   Registered students
@@ -316,7 +393,7 @@ export default function SchoolStudentsPage() {
                   Placed Students
                 </p>
                 <p className="mt-3 text-3xl font-bold text-emerald-600">
-                  {placedStudents}
+                  {studentsError ? "—" : placedStudents}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
                   Students with a company
@@ -348,7 +425,7 @@ export default function SchoolStudentsPage() {
                   Unplaced Students
                 </p>
                 <p className="mt-3 text-3xl font-bold text-amber-600">
-                  {unplacedStudents}
+                  {studentsError ? "—" : unplacedStudents}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
                   Students without a company
@@ -504,6 +581,7 @@ export default function SchoolStudentsPage() {
                     setActivityStatus(event.target.value as ActivityFilter)
                   }
                   className={selectClassName}
+                  disabled={Boolean(activitiesError)}
                 >
                   <option value="all">All activity statuses</option>
                   <option value="active">Active</option>
@@ -514,11 +592,20 @@ export default function SchoolStudentsPage() {
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm text-slate-500" aria-live="polite">
-                <span className="font-semibold text-slate-800">
-                  {filteredStudents.length}
-                </span>{" "}
-                {filteredStudents.length === 1 ? "student" : "students"} found
+                {isLoading ? (
+                  "Loading student records..."
+                ) : studentsError ? (
+                  "Student records are unavailable."
+                ) : (
+                  <>
+                    <span className="font-semibold text-slate-800">
+                      {filteredStudents.length}
+                    </span>{" "}
+                    {filteredStudents.length === 1 ? "student" : "students"} found
+                  </>
+                )}
               </p>
+
               {hasActiveFilters && (
                 <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700">
                   Filters applied
@@ -599,7 +686,9 @@ export default function SchoolStudentsPage() {
                         )}
                       </td>
                       <td className="px-4 py-4">
-                        {hasActivity ? (
+                        {activitiesError ? (
+                          <StatusBadge status="neutral">Unavailable</StatusBadge>
+                        ) : hasActivity ? (
                           <StatusBadge status="success">Active</StatusBadge>
                         ) : (
                           <StatusBadge status="neutral">
@@ -613,36 +702,38 @@ export default function SchoolStudentsPage() {
               </tbody>
             </table>
 
-            {filteredStudents.length === 0 && (
-              <div className="px-6 py-14 text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    className="h-6 w-6"
-                    aria-hidden="true"
+            {!isLoading &&
+              !studentsError &&
+              filteredStudents.length === 0 && (
+                <div className="px-6 py-14 text-center">
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      className="h-6 w-6"
+                      aria-hidden="true"
+                    >
+                      <circle cx="11" cy="11" r="7" />
+                      <path d="m16 16 4 4" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    No students found
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Try changing your search or clearing some filters.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-4 text-sm font-semibold text-orange-600 hover:text-orange-700"
                   >
-                    <circle cx="11" cy="11" r="7" />
-                    <path d="m16 16 4 4" strokeLinecap="round" />
-                  </svg>
+                    Clear all filters
+                  </button>
                 </div>
-                <h3 className="text-sm font-semibold text-slate-800">
-                  No students found
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Try changing your search or clearing some filters.
-                </p>
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="mt-4 text-sm font-semibold text-orange-600 hover:text-orange-700"
-                >
-                  Clear all filters
-                </button>
-              </div>
-            )}
+              )}
           </div>
 
           {/* Mobile cards */}
@@ -715,7 +806,9 @@ export default function SchoolStudentsPage() {
                     <div>
                       <p className="text-xs text-slate-500">Activity</p>
                       <div className="mt-1">
-                        {hasActivity ? (
+                        {activitiesError ? (
+                          <StatusBadge status="neutral">Unavailable</StatusBadge>
+                        ) : hasActivity ? (
                           <StatusBadge status="success">Active</StatusBadge>
                         ) : (
                           <StatusBadge status="neutral">
@@ -736,23 +829,25 @@ export default function SchoolStudentsPage() {
               );
             })}
 
-            {filteredStudents.length === 0 && (
-              <div className="px-3 py-10 text-center">
-                <h3 className="text-sm font-semibold text-slate-800">
-                  No students found
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Try changing your search or clearing some filters.
-                </p>
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="mt-4 text-sm font-semibold text-orange-600 hover:text-orange-700"
-                >
-                  Clear all filters
-                </button>
-              </div>
-            )}
+            {!isLoading &&
+              !studentsError &&
+              filteredStudents.length === 0 && (
+                <div className="px-3 py-10 text-center">
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    No students found
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Try changing your search or clearing some filters.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-4 text-sm font-semibold text-orange-600 hover:text-orange-700"
+                  >
+                    Clear all filters
+                  </button>
+                </div>
+              )}
           </div>
 
           {/* Results footer */}
@@ -760,11 +855,11 @@ export default function SchoolStudentsPage() {
             <p className="text-sm text-slate-500">
               Showing{" "}
               <span className="font-semibold text-slate-800">
-                {filteredStudents.length}
+                {studentsError ? "—" : filteredStudents.length}
               </span>{" "}
               of{" "}
               <span className="font-semibold text-slate-800">
-                {totalStudents}
+                {studentsError ? "—" : totalStudents}
               </span>{" "}
               {totalStudents === 1 ? "student" : "students"}
             </p>
