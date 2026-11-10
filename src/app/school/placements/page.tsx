@@ -1,42 +1,62 @@
+
 "use client";
 
 import Link from "next/link";
-
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Student } from "@/types";
-import { fetchStudentsWithFallback } from "@/services/schoolService";
+import {
+  fetchStudentsWithFallback,
+  getSchoolApiErrorMessage,
+} from "@/services/schoolService";
 
 export default function SchoolPlacementsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "placed" | "unplaced">("all");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "placed" | "unplaced"
+  >("all");
   const [isLoading, setIsLoading] = useState(true);
+  const [studentsError, setStudentsError] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    try {
+      const liveStudents = await fetchStudentsWithFallback();
+
+      setStudents(liveStudents);
+      setStudentsError(null);
+    } catch (error) {
+      setStudentsError(getSchoolApiErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    async function load() {
-      try {
-        const live = await fetchStudentsWithFallback();
-        if (isMounted) setStudents(live);
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-    load();
-    return () => { isMounted = false; };
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [loadData]);
+
+  const handleRetry = () => {
+    setIsLoading(true);
+    void loadData();
+  };
 
   const totalStudents = students.length;
 
   const placedStudents = useMemo(
     () => students.filter((s) => s.placementCompany.trim().length > 0),
-    [students]
+    [students],
   );
 
   const unplacedStudents = useMemo(
     () => students.filter((s) => s.placementCompany.trim().length === 0),
-    [students]
+    [students],
   );
 
   const placementCoverage =
@@ -46,11 +66,15 @@ export default function SchoolPlacementsPage() {
 
   const filteredStudents = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+
     return students.filter((student) => {
       const isPlaced = student.placementCompany.trim().length > 0;
+
       if (statusFilter === "placed" && !isPlaced) return false;
       if (statusFilter === "unplaced" && isPlaced) return false;
+
       if (!q) return true;
+
       return (
         student.name.toLowerCase().includes(q) ||
         student.matricNumber.toLowerCase().includes(q) ||
@@ -69,9 +93,9 @@ export default function SchoolPlacementsPage() {
         {/* Top bar */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
           <div>
-            <p className="text-xs font-medium text-slate-500">
-              School Dashboard
-            </p>
+            <p className="text-sm font-bold text-slate-700">
+  Placement Management
+</p>
           </div>
 
           <div className="flex items-center gap-4">
@@ -165,6 +189,35 @@ export default function SchoolPlacementsPage() {
             </div>
           </section>
 
+          {/* API error and retry */}
+          {studentsError && (
+            <div
+              role="alert"
+              className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-red-800">
+                    Student placement information could not be loaded.
+                  </p>
+
+                  <p className="mt-1 text-xs text-red-700">
+                    {studentsError}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  disabled={isLoading}
+                  className="shrink-0 rounded-lg bg-red-700 px-4 py-2 text-xs font-medium text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoading ? "Retrying..." : "Try again"}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Placement summary */}
           <section
             className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
@@ -193,7 +246,7 @@ export default function SchoolPlacementsPage() {
               </div>
 
               <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {totalStudents}
+                {isLoading ? "..." : studentsError ? "—" : totalStudents}
               </p>
 
               <p className="mt-1 text-xs text-slate-400">
@@ -221,7 +274,7 @@ export default function SchoolPlacementsPage() {
               </div>
 
               <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {placedStudents.length}
+                {isLoading ? "..." : studentsError ? "—" : placedStudents.length}
               </p>
 
               <p className="mt-1 text-xs text-slate-400">
@@ -251,7 +304,7 @@ export default function SchoolPlacementsPage() {
               </div>
 
               <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {unplacedStudents.length}
+                {isLoading ? "..." : studentsError ? "—" : unplacedStudents.length}
               </p>
 
               <p className="mt-1 text-xs text-slate-400">
@@ -280,11 +333,13 @@ export default function SchoolPlacementsPage() {
               </div>
 
               <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {placementCoverage}%
+                {isLoading ? "..." : studentsError ? "—" : `${placementCoverage}%`}
               </p>
 
               <p className="mt-1 text-xs text-slate-400">
-                Placement coverage
+                {studentsError
+                  ? "Placement coverage unavailable"
+                  : "Placement coverage"}
               </p>
             </article>
           </section>
@@ -305,18 +360,11 @@ export default function SchoolPlacementsPage() {
                   who still need placement.
                 </p>
               </div>
-
-              <button
-                type="button"
-                className="w-fit rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm transition hover:border-[#7b83e8] hover:text-[#1729c7]"
-              >
-                Filter
-              </button>
             </div>
 
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              {/* Search bar */}
-              <div className="border-b border-slate-200 p-4">
+              {/* Search and filters */}
+              <div className="flex flex-col gap-4 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="relative w-full lg:max-w-sm">
                   <svg
                     viewBox="0 0 24 24"
@@ -333,8 +381,37 @@ export default function SchoolPlacementsPage() {
                     type="text"
                     placeholder="Search students or companies..."
                     aria-label="Search placements"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
                     className="h-10 w-full rounded-lg border border-slate-200 bg-[#f8f9fc] pl-9 pr-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#7b83e8] focus:bg-white focus:ring-2 focus:ring-[#eef0ff]"
                   />
+                </div>
+
+                <div
+                  className="flex flex-wrap items-center gap-2"
+                  aria-label="Filter by placement status"
+                >
+                  {(
+                    [
+                      { value: "all", label: "All students" },
+                      { value: "placed", label: "Placed" },
+                      { value: "unplaced", label: "Unplaced" },
+                    ] as const
+                  ).map((filter) => (
+                    <button
+                      key={filter.value}
+                      type="button"
+                      onClick={() => setStatusFilter(filter.value)}
+                      aria-pressed={statusFilter === filter.value}
+                      className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                        statusFilter === filter.value
+                          ? "bg-[#10195c] text-white"
+                          : "border border-slate-200 bg-white text-slate-600 hover:border-[#7b83e8] hover:text-[#1729c7]"
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -454,6 +531,42 @@ export default function SchoolPlacementsPage() {
                         </tr>
                       );
                     })}
+
+                    {isLoading && (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-5 py-12 text-center text-sm text-slate-500"
+                        >
+                          Loading placement information...
+                        </td>
+                      </tr>
+                    )}
+
+                    {!isLoading &&
+                      !studentsError &&
+                      filteredStudents.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="px-5 py-12 text-center text-sm text-slate-500"
+                          >
+                            No students match your search or selected filter.
+                          </td>
+                        </tr>
+                      )}
+
+                    {studentsError && (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-5 py-12 text-center text-sm text-red-600"
+                        >
+                          Placement information is unavailable. Use the retry
+                          button above to try again.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -553,6 +666,27 @@ export default function SchoolPlacementsPage() {
                     </Link>
                   );
                 })}
+
+                {isLoading && (
+                  <p className="px-4 py-10 text-center text-sm text-slate-500">
+                    Loading placement information...
+                  </p>
+                )}
+
+                {!isLoading &&
+                  !studentsError &&
+                  filteredStudents.length === 0 && (
+                    <p className="px-4 py-10 text-center text-sm text-slate-500">
+                      No students match your search or selected filter.
+                    </p>
+                  )}
+
+                {studentsError && (
+                  <p className="px-4 py-10 text-center text-sm text-red-600">
+                    Placement information is unavailable. Use the retry button
+                    above to try again.
+                  </p>
+                )}
               </div>
 
               {/* Footer */}
@@ -560,7 +694,11 @@ export default function SchoolPlacementsPage() {
                 <p className="text-xs text-slate-500">
                   Showing{" "}
                   <span className="font-medium text-slate-700">
-                    {totalStudents}
+                    {studentsError ? "—" : filteredStudents.length}
+                  </span>{" "}
+                  of{" "}
+                  <span className="font-medium text-slate-700">
+                    {studentsError ? "—" : totalStudents}
                   </span>{" "}
                   students
                 </p>
@@ -576,47 +714,49 @@ export default function SchoolPlacementsPage() {
           </section>
 
           {/* Unplaced students */}
-          {unplacedStudents.length > 0 && (
-            <section className="mt-6 rounded-xl border border-amber-100 bg-amber-50/60 p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-600">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="h-5 w-5"
-                  >
-                    <path d="M12 3 2.5 20h19L12 3Z" />
-                    <path d="M12 9v5" />
-                    <path d="M12 17h.01" />
-                  </svg>
+          {!isLoading &&
+            !studentsError &&
+            unplacedStudents.length > 0 && (
+              <section className="mt-6 rounded-xl border border-amber-100 bg-amber-50/60 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-600">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      className="h-5 w-5"
+                    >
+                      <path d="M12 3 2.5 20h19L12 3Z" />
+                      <path d="M12 9v5" />
+                      <path d="M12 17h.01" />
+                    </svg>
+                  </div>
+
+                  <div>
+                    <h2 className="text-sm font-semibold text-[#10195c]">
+                      Placement attention needed
+                    </h2>
+
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      {unplacedStudents.length}{" "}
+                      {unplacedStudents.length === 1
+                        ? "student currently has"
+                        : "students currently have"}{" "}
+                      no placement company assigned. Review the student list to
+                      monitor their placement status.
+                    </p>
+
+                    <Link
+                      href="/school/students"
+                      className="mt-3 inline-flex text-xs font-semibold text-[#1729c7] hover:underline"
+                    >
+                      Review students →
+                    </Link>
+                  </div>
                 </div>
-
-                <div>
-                  <h2 className="text-sm font-semibold text-[#10195c]">
-                    Placement attention needed
-                  </h2>
-
-                  <p className="mt-1 text-xs leading-5 text-slate-600">
-                    {unplacedStudents.length}{" "}
-                    {unplacedStudents.length === 1
-                      ? "student currently has"
-                      : "students currently have"}{" "}
-                    no placement company assigned. Review the student list to
-                    monitor their placement status.
-                  </p>
-
-                  <Link
-                    href="/school/students"
-                    className="mt-3 inline-flex text-xs font-semibold text-[#1729c7] hover:underline"
-                  >
-                    Review students →
-                  </Link>
-                </div>
-              </div>
-            </section>
-          )}
+              </section>
+            )}
         </main>
       </div>
     </div>

@@ -1,96 +1,216 @@
-import apiClient from './apiClient';
-import { Student, ActivityLog } from '../types';
 
-export function mapBackendStudentToStudent(s: any): Student {
-  const firstName = s.firstName || '';
-  const lastName = s.lastName || '';
-  const fullName = [firstName, lastName].filter(Boolean).join(' ').trim() || s.name || s.studentCode || 'Student';
+import apiClient from './apiClient';
+import axios from 'axios';
+import { Student, ActivityLog, ActivityStatus } from '../types';
+
+type BackendRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is BackendRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getRecord(value: unknown): BackendRecord {
+  return isRecord(value) ? value : {};
+}
+
+function getString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function getNestedRecord(
+  record: BackendRecord,
+  key: string,
+): BackendRecord {
+  return getRecord(record[key]);
+}
+
+function getStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
+function extractArray(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+
+  if (isRecord(data) && Array.isArray(data.data)) {
+    return data.data;
+  }
+
+  return [];
+}
+
+export function mapBackendStudentToStudent(
+  input: unknown,
+): Student {
+  const s = getRecord(input);
+  const school = getNestedRecord(s, 'school');
+  const placement = getNestedRecord(s, 'placement');
+  const placementCompany = getNestedRecord(placement, 'company');
+  const company = getNestedRecord(s, 'company');
+
+  const firstName = getString(s.firstName);
+  const lastName = getString(s.lastName);
+  const studentCode = getString(s.studentCode);
+
+  const fullName =
+    [firstName, lastName].filter(Boolean).join(' ').trim() ||
+    getString(s.name) ||
+    studentCode ||
+    'Student';
+
+  const rawLevel = s.level;
+  const level = rawLevel
+    ? String(rawLevel).includes('Level') || String(rawLevel).includes('L')
+      ? String(rawLevel)
+      : `${rawLevel} Level`
+    : '300 Level';
 
   return {
-    id: s.id || s.studentCode || '',
+    id: getString(s.id) || studentCode,
     name: fullName,
-    matricNumber: s.matriculationNumber || s.matricNumber || s.studentCode || 'N/A',
-    university: s.school?.name || s.university || 'SIWES Institution',
-    department: s.department || 'General',
-    level: s.level ? (String(s.level).includes('Level') || String(s.level).includes('L') ? String(s.level) : `${s.level} Level`) : '300 Level',
-    placementCompany: s.placement?.company?.name || s.placement?.title || s.company?.name || s.placementCompany || '',
-    avatarUrl: s.avatarUrl,
+    matricNumber:
+      getString(s.matriculationNumber) ||
+      getString(s.matricNumber) ||
+      studentCode ||
+      'N/A',
+    university:
+      getString(school.name) ||
+      getString(s.university) ||
+      'SIWES Institution',
+    department: getString(s.department, 'General'),
+    level,
+    placementCompany:
+      getString(placementCompany.name) ||
+      getString(placement.title) ||
+      getString(company.name) ||
+      getString(s.placementCompany),
+    avatarUrl: getString(s.avatarUrl) || undefined,
   };
 }
 
-export function mapBackendActivityToActivityLog(a: any): ActivityLog {
-  const rawStatus = String(a.status || 'pending').toLowerCase();
-  let status: 'pending' | 'approved' | 'rejected' | 'revision_requested' = 'pending';
+export function mapBackendActivityToActivityLog(
+  input: unknown,
+): ActivityLog {
+  const a = getRecord(input);
+  const student = getNestedRecord(a, 'student');
+  const review = getNestedRecord(a, 'review');
+
+  const rawStatus = getString(a.status, 'pending').toLowerCase();
+
+  let status: ActivityStatus = 'pending';
+
   if (rawStatus === 'approved') status = 'approved';
   else if (rawStatus === 'rejected') status = 'rejected';
-  else if (rawStatus === 'revision_requested' || rawStatus === 'needs_revision') status = 'revision_requested';
+  else if (
+    rawStatus === 'revision_requested' ||
+    rawStatus === 'needs_revision'
+  ) {
+    status = 'revision_requested';
+  }
+
+  const rawDate = a.date;
+  let date = new Date().toISOString().split('T')[0];
+
+  if (typeof rawDate === 'string') {
+    date = rawDate.split('T')[0];
+  } else if (rawDate instanceof Date || typeof rawDate === 'number') {
+    const parsedDate = new Date(rawDate);
+
+    if (!Number.isNaN(parsedDate.getTime())) {
+      date = parsedDate.toISOString().split('T')[0];
+    }
+  }
+
+  const evidence = getString(a.evidence);
 
   return {
-    id: a.id || '',
-    studentId: a.studentId || a.student?.id || '',
-    date: typeof a.date === 'string' ? a.date.split('T')[0] : (a.date ? new Date(a.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
-    title: a.title || 'Activity Entry',
-    description: a.description || '',
+    id: getString(a.id),
+    studentId:
+      getString(a.studentId) ||
+      getString(student.id),
+    date,
+    title: getString(a.title, 'Activity Entry'),
+    description: getString(a.description),
     hoursWorked: Number(a.hoursWorked) || 0,
-    skillsAcquired: Array.isArray(a.skillsUsed) ? a.skillsUsed : (Array.isArray(a.skillsAcquired) ? a.skillsAcquired : []),
-    evidenceUrls: Array.isArray(a.evidenceUrls) ? a.evidenceUrls : (a.evidence ? [a.evidence] : []),
+    skillsAcquired:
+      getStringArray(a.skillsUsed).length > 0
+        ? getStringArray(a.skillsUsed)
+        : getStringArray(a.skillsAcquired),
+    evidenceUrls:
+      getStringArray(a.evidenceUrls).length > 0
+        ? getStringArray(a.evidenceUrls)
+        : evidence
+          ? [evidence]
+          : [],
     status,
-    supervisorFeedback: a.review?.comment || a.supervisorFeedback || a.comment,
+    supervisorFeedback:
+      getString(review.comment) ||
+      getString(a.supervisorFeedback) ||
+      getString(a.comment) ||
+      undefined,
   };
+}
+
+export function getSchoolApiErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+
+    if (status === 401) {
+      return 'Your session is missing or has expired. Please log in with a school coordinator account.';
+    }
+
+    if (status === 403) {
+      return 'You do not have permission to access this school data.';
+    }
+
+    if (status === 404) {
+      return 'The requested API endpoint could not be found. Please confirm the endpoint with the backend team.';
+    }
+
+    if (status && status >= 500) {
+      return 'The server encountered an error. Please try again later.';
+    }
+
+    if (!error.response) {
+      return 'Unable to connect to the server. Check your internet connection and try again.';
+    }
+  }
+
+  return 'Something went wrong while loading school data. Please try again.';
 }
 
 export async function fetchStudentsWithFallback(): Promise<Student[]> {
-  try {
-    const res = await apiClient.get('/students');
-    const raw = Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.data) ? res.data.data : []);
-    return raw.map(mapBackendStudentToStudent);
-  } catch (err) {
-    console.error('Error fetching students:', err);
-    return [];
-  }
+  const res = await apiClient.get('/students');
+  return extractArray(res.data).map(mapBackendStudentToStudent);
 }
 
-export async function fetchStudentById(id: string): Promise<Student | null> {
-  try {
-    const res = await apiClient.get(`/students/${id}`);
-    if (res.data) {
-      return mapBackendStudentToStudent(res.data);
-    }
-  } catch (err) {
-    console.error(`Error fetching student ${id}:`, err);
+export async function fetchStudentById(id: string): Promise<Student> {
+  const res = await apiClient.get(`/students/${id}`);
+
+  if (!res.data) {
+    throw new Error(`Student ${id} was not found.`);
   }
-  return null;
+
+  return mapBackendStudentToStudent(res.data);
 }
 
 export async function fetchActivitiesWithFallback(): Promise<ActivityLog[]> {
-  try {
-    const res = await apiClient.get('/activities');
-    const raw = Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.data) ? res.data.data : []);
-    return raw.map(mapBackendActivityToActivityLog);
-  } catch (err) {
-    console.error('Error fetching activities:', err);
-    return [];
-  }
+  const res = await apiClient.get('/activities');
+  return extractArray(res.data).map(mapBackendActivityToActivityLog);
 }
 
-export async function fetchStudentActivities(studentId: string): Promise<ActivityLog[]> {
-  try {
-    const res = await apiClient.get(`/activities?studentId=${studentId}`);
-    const raw = Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.data) ? res.data.data : []);
-    return raw.map(mapBackendActivityToActivityLog);
-  } catch (err) {
-    console.error(`Error fetching activities for student ${studentId}:`, err);
-    return [];
-  }
+export async function fetchStudentActivities(
+  studentId: string,
+): Promise<ActivityLog[]> {
+  const res = await apiClient.get(
+    `/activities?studentId=${encodeURIComponent(studentId)}`,
+  );
+
+  return extractArray(res.data).map(mapBackendActivityToActivityLog);
 }
 
-export async function fetchPlacementsWithFallback(): Promise<any[]> {
-  try {
-    const res = await apiClient.get('/placements');
-    const raw = Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.data) ? res.data.data : []);
-    return raw;
-  } catch (err) {
-    console.error('Error fetching placements:', err);
-    return [];
-  }
+export async function fetchPlacementsWithFallback(): Promise<unknown[]> {
+  const res = await apiClient.get('/placements');
+  return extractArray(res.data);
 }

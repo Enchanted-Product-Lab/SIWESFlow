@@ -1,11 +1,15 @@
+
 "use client";
 
 import Link from "next/link";
-
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityLog, Student } from "@/types";
-import { fetchActivitiesWithFallback, fetchStudentsWithFallback } from "@/services/schoolService";
+import {
+  fetchActivitiesWithFallback,
+  fetchStudentsWithFallback,
+  getSchoolApiErrorMessage,
+} from "@/services/schoolService";
 
 const statusStyles = {
   pending: {
@@ -35,27 +39,52 @@ export default function SchoolActivityMonitoringPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
   const [isLoading, setIsLoading] = useState(true);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+  const [studentsError, setStudentsError] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    const [activitiesResult, studentsResult] = await Promise.allSettled([
+      fetchActivitiesWithFallback(),
+      fetchStudentsWithFallback(),
+    ]);
+
+    if (activitiesResult.status === "fulfilled") {
+      setActivities(activitiesResult.value);
+      setActivitiesError(null);
+    } else {
+      setActivitiesError(
+        getSchoolApiErrorMessage(activitiesResult.reason),
+      );
+    }
+
+    if (studentsResult.status === "fulfilled") {
+      setStudents(studentsResult.value);
+      setStudentsError(null);
+    } else {
+      setStudentsError(
+        getSchoolApiErrorMessage(studentsResult.reason),
+      );
+    }
+
+    setIsLoading(false);
+  }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    async function load() {
-      try {
-        const [liveActivities, liveStudents] = await Promise.all([
-          fetchActivitiesWithFallback(),
-          fetchStudentsWithFallback(),
-        ]);
-        if (isMounted) {
-          setActivities(liveActivities);
-          setStudents(liveStudents);
-        }
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-    load();
-    return () => { isMounted = false; };
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [loadData]);
+
+  const handleRetry = () => {
+    setIsLoading(true);
+    void loadData();
+  };
 
   const totalActivities = activities.length;
 
@@ -74,7 +103,7 @@ export default function SchoolActivityMonitoringPage() {
 
   const activeStudentIds = useMemo(
     () => new Set(activities.map((activityLog) => activityLog.studentId)),
-    [activities]
+    [activities],
   );
 
   const studentsWithActivity = students.filter((student) =>
@@ -85,23 +114,32 @@ export default function SchoolActivityMonitoringPage() {
     (student) => !activeStudentIds.has(student.id),
   );
 
-  const getStudent = (studentId: string) =>
-    students.find((student) => student.id === studentId) || {
-      id: studentId,
-      name: "Student " + studentId,
-      matricNumber: "MAT/2026",
-      university: "Institution",
-      department: "SIWES Department",
-      level: "300 Level",
-      placementCompany: "Placement Company",
-    };
+  const getStudent = useCallback(
+    (studentId: string) =>
+      students.find((student) => student.id === studentId) || {
+        id: studentId,
+        name: "Student " + studentId,
+        matricNumber: "MAT/2026",
+        university: "Institution",
+        department: "SIWES Department",
+        level: "300 Level",
+        placementCompany: "Placement Company",
+      },
+    [students],
+  );
 
   const filteredActivities = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+
     return activities.filter((log) => {
-      if (statusFilter !== "all" && log.status !== statusFilter) return false;
+      if (statusFilter !== "all" && log.status !== statusFilter) {
+        return false;
+      }
+
       if (!q) return true;
+
       const student = getStudent(log.studentId);
+
       return (
         log.title.toLowerCase().includes(q) ||
         log.description.toLowerCase().includes(q) ||
@@ -109,7 +147,7 @@ export default function SchoolActivityMonitoringPage() {
         student.matricNumber.toLowerCase().includes(q)
       );
     });
-  }, [activities, students, searchQuery, statusFilter]);
+  }, [activities, searchQuery, statusFilter, getStudent]);
 
   return (
     <div className="min-h-screen bg-[#f7f8fc] text-[#10195c]">
@@ -119,9 +157,7 @@ export default function SchoolActivityMonitoringPage() {
         {/* Top bar */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
           <div>
-            <p className="text-xs font-medium text-slate-500">
-              School Dashboard
-            </p>
+
           </div>
 
           <div className="flex items-center gap-4">
@@ -183,7 +219,7 @@ export default function SchoolActivityMonitoringPage() {
 
             <div className="mt-1 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-[#10195c] sm:text-3xl">
+                <h1 className="text-2xl font-bold tracking-tight text-[#10195c] sm:text-3xl">
                   Activity Monitoring
                 </h1>
 
@@ -215,6 +251,43 @@ export default function SchoolActivityMonitoringPage() {
             </div>
           </section>
 
+          {/* API error alert */}
+          {(activitiesError || studentsError) && (
+            <div
+              role="alert"
+              className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-red-800">
+                    Some activity monitoring information could not be loaded.
+                  </p>
+
+                  {activitiesError && (
+                    <p className="mt-1 text-xs text-red-700">
+                      Activities: {activitiesError}
+                    </p>
+                  )}
+
+                  {studentsError && (
+                    <p className="mt-1 text-xs text-red-700">
+                      Students: {studentsError}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  disabled={isLoading}
+                  className="shrink-0 rounded-lg bg-red-700 px-4 py-2 text-xs font-medium text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoading ? "Retrying..." : "Try again"}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Summary cards */}
           <section
             className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
@@ -240,7 +313,7 @@ export default function SchoolActivityMonitoringPage() {
               </div>
 
               <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {totalActivities}
+                {activitiesError ? "—" : totalActivities}
               </p>
 
               <p className="mt-1 text-xs text-slate-400">
@@ -269,7 +342,7 @@ export default function SchoolActivityMonitoringPage() {
               </div>
 
               <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {pendingActivities}
+                {activitiesError ? "—" : pendingActivities}
               </p>
 
               <p className="mt-1 text-xs text-slate-400">
@@ -297,7 +370,7 @@ export default function SchoolActivityMonitoringPage() {
               </div>
 
               <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {approvedActivities}
+                {activitiesError ? "—" : approvedActivities}
               </p>
 
               <p className="mt-1 text-xs text-slate-400">
@@ -326,7 +399,7 @@ export default function SchoolActivityMonitoringPage() {
               </div>
 
               <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {totalHours}
+                {activitiesError ? "—" : totalHours}
               </p>
 
               <p className="mt-1 text-xs text-slate-400">
@@ -377,6 +450,8 @@ export default function SchoolActivityMonitoringPage() {
 
                   <input
                     type="text"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
                     placeholder="Search activities or students..."
                     aria-label="Search activities"
                     className="h-10 w-full rounded-lg border border-slate-200 bg-[#f8f9fc] pl-9 pr-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#7b83e8] focus:bg-white focus:ring-2 focus:ring-[#eef0ff]"
@@ -384,14 +459,24 @@ export default function SchoolActivityMonitoringPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {['all', 'pending', 'approved', 'rejected', 'revision_requested'].map((st) => (
+                  {[
+                    "all",
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "revision_requested",
+                  ].map((st) => (
                     <button
                       key={st}
                       type="button"
                       onClick={() => setStatusFilter(st)}
-                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium capitalize transition ${statusFilter === st ? "border-[#1729c7] bg-[#eef0ff] text-[#1729c7]" : "border-slate-200 bg-white text-slate-600 hover:border-[#7b83e8]"}`}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium capitalize transition ${
+                        statusFilter === st
+                          ? "border-[#1729c7] bg-[#eef0ff] text-[#1729c7]"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-[#7b83e8]"
+                      }`}
                     >
-                      {st.replace('_', ' ')}
+                      {st.replace("_", " ")}
                     </button>
                   ))}
                 </div>
@@ -431,12 +516,7 @@ export default function SchoolActivityMonitoringPage() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredActivities.map((activityLog) => {
                       const student = getStudent(activityLog.studentId);
-
-                      if (!student) {
-                        return null;
-                      }
-
-                      const status = (statusStyles as any)[activityLog.status] || statusStyles.pending;
+                      const status = statusStyles[activityLog.status];
 
                       const initials = student.name
                         .split(" ")
@@ -511,6 +591,43 @@ export default function SchoolActivityMonitoringPage() {
                         </tr>
                       );
                     })}
+
+                    {activitiesError && (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-5 py-10 text-center text-sm text-red-600"
+                        >
+                          Activity submissions are unavailable. Please try
+                          again.
+                        </td>
+                      </tr>
+                    )}
+
+                    {isLoading && (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-5 py-10 text-center text-sm text-slate-500"
+                        >
+                          Loading activity submissions...
+                        </td>
+                      </tr>
+                    )}
+
+                    {!isLoading &&
+                      !activitiesError &&
+                      filteredActivities.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="px-5 py-10 text-center text-sm text-slate-500"
+                          >
+                            No activities found. Try changing your search or
+                            status filter.
+                          </td>
+                        </tr>
+                      )}
                   </tbody>
                 </table>
               </div>
@@ -519,11 +636,6 @@ export default function SchoolActivityMonitoringPage() {
               <div className="divide-y divide-slate-100 md:hidden">
                 {filteredActivities.map((activityLog) => {
                   const student = getStudent(activityLog.studentId);
-
-                  if (!student) {
-                    return null;
-                  }
-
                   const status = statusStyles[activityLog.status];
 
                   const initials = student.name
@@ -624,6 +736,27 @@ export default function SchoolActivityMonitoringPage() {
                     </article>
                   );
                 })}
+
+                {activitiesError && (
+                  <p className="px-4 py-10 text-center text-sm text-red-600">
+                    Activity submissions are unavailable. Please try again.
+                  </p>
+                )}
+
+                {isLoading && (
+                  <p className="px-4 py-10 text-center text-sm text-slate-500">
+                    Loading activity submissions...
+                  </p>
+                )}
+
+                {!isLoading &&
+                  !activitiesError &&
+                  filteredActivities.length === 0 && (
+                    <p className="px-4 py-10 text-center text-sm text-slate-500">
+                      No activities found. Try changing your search or status
+                      filter.
+                    </p>
+                  )}
               </div>
 
               {/* Footer */}
@@ -631,62 +764,66 @@ export default function SchoolActivityMonitoringPage() {
                 <p className="text-xs text-slate-500">
                   Showing{" "}
                   <span className="font-medium text-slate-700">
-                    {totalActivities}
+                    {activitiesError ? "—" : filteredActivities.length}
                   </span>{" "}
-                  activity logs
+                  of {activitiesError ? "—" : totalActivities} activity logs
                 </p>
 
                 <p className="text-xs text-slate-400">
-                  {studentsWithActivity} of {students.length} students
-                  active
+                  {studentsError || activitiesError
+                    ? "—"
+                    : `${studentsWithActivity} of ${students.length} students active`}
                 </p>
               </div>
             </div>
           </section>
 
           {/* Students needing attention */}
-          {studentsWithoutActivity.length > 0 && (
-            <section className="mt-6 rounded-xl border border-amber-100 bg-amber-50/60 p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-600">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="h-5 w-5"
-                  >
-                    <path d="M12 3 2.5 20h19L12 3Z" />
-                    <path d="M12 9v5" />
-                    <path d="M12 17h.01" />
-                  </svg>
-                </div>
+          {!isLoading &&
+            !studentsError &&
+            !activitiesError &&
+            studentsWithoutActivity.length > 0 && (
+              <section className="mt-6 rounded-xl border border-amber-100 bg-amber-50/60 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-600">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      className="h-5 w-5"
+                    >
+                      <path d="M12 3 2.5 20h19L12 3Z" />
+                      <path d="M12 9v5" />
+                      <path d="M12 17h.01" />
+                    </svg>
+                  </div>
 
-                <div>
-                  <h2 className="text-sm font-semibold text-[#10195c]">
-                    Students needing attention
-                  </h2>
+                  <div>
+                    <h2 className="text-sm font-semibold text-[#10195c]">
+                      Students needing attention
+                    </h2>
 
-                  <p className="mt-1 text-xs leading-5 text-slate-600">
-                    The following students currently have no activity logs in
-                    the available monitoring data.
-                  </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      The following students currently have no activity logs in
+                      the available monitoring data.
+                    </p>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {studentsWithoutActivity.map((student) => (
-                      <Link
-                        key={student.id}
-                        href={`/school/students/${student.id}`}
-                        className="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-[#1729c7] transition hover:bg-[#f3f4ff]"
-                      >
-                        {student.name}
-                      </Link>
-                    ))}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {studentsWithoutActivity.map((student) => (
+                        <Link
+                          key={student.id}
+                          href={`/school/students/${student.id}`}
+                          className="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-[#1729c7] transition hover:bg-[#f3f4ff]"
+                        >
+                          {student.name}
+                        </Link>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </section>
-          )}
+              </section>
+            )}
 
           {/* Monitoring note */}
           <section className="mt-6 rounded-xl bg-[#e8e8ff] p-5">
