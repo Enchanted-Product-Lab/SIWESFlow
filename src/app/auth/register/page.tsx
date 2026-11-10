@@ -271,6 +271,7 @@ export default function RegisterPage() {
                 <div className="mt-6">
                   <button
                     type="button"
+                    onClick={() => setError('Google Authentication is currently undergoing staging integration. Please register with your institutional email and password.')}
                     className="w-full flex justify-center items-center py-3 px-4 border border-slate-300 rounded-lg shadow-sm bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
                   >
                     <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
