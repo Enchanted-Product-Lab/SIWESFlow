@@ -99,10 +99,12 @@ export default function StudentProfilePage() {
       <div className="lg:pl-56">
         {/* Top bar */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
-          <div>
-            <p className="text-xs font-medium text-slate-500">
-              School Dashboard
-            </p>
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            <Link href="/school/dashboard" className="hover:text-blue-700 transition-colors">School Dashboard</Link>
+            <span>/</span>
+            <Link href="/school/students" className="hover:text-blue-700 transition-colors">Students</Link>
+            <span>/</span>
+            <span className="text-slate-800 font-semibold">{student.name}</span>
           </div>
 
           <div className="flex items-center gap-4">

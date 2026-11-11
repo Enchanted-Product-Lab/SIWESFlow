@@ -864,7 +864,7 @@ export default function SchoolStudentsPage() {
               {totalStudents === 1 ? "student" : "students"}
             </p>
             <Link
-              href="/school"
+              href="/school/dashboard"
               className="text-sm font-medium text-[#343eaa] transition hover:text-orange-600"
             >
               Back to Dashboard →

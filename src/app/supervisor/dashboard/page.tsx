@@ -78,14 +78,14 @@ export default function SupervisorDashboard() {
         
         <div className="flex flex-wrap items-center gap-3">
           <Link 
-            href="/supervisor/students/STU-001"
+            href={students.length > 0 ? `/supervisor/students/${students[0].id}/logbook` : "/supervisor/students"}
             className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors inline-flex items-center gap-2"
           >
             <BookOpen size={16} /> View Student Logbook
           </Link>
           
           <Link 
-            href="/supervisor/students/STU-001/completion"
+            href={students.length > 0 ? `/supervisor/students/${students[0].id}/completion` : "/supervisor/students"}
             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-colors inline-flex items-center gap-2 shadow-sm"
           >
             <UserCheck size={16} /> Final Sign-off Page
