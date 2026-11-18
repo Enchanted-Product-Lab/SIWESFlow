@@ -104,7 +104,7 @@ export default function StudentProfilePage() {
             <span>/</span>
             <Link href="/school/students" className="hover:text-blue-700 transition-colors">Students</Link>
             <span>/</span>
-            <span className="text-slate-800 font-semibold">{student.name}</span>
+            <span className="text-slate-800 font-semibold">{student?.name || "Student Details"}</span>
           </div>
 
           <div className="flex items-center gap-4">
