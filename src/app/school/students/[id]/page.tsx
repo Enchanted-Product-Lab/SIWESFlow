@@ -6,36 +6,73 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
-import { Student, ActivityLog } from "@/types";
+import SchoolHeader from "@/components/shared/SchoolHeader";
+import { ActivityLog } from "@/types";
 import {
+  SchoolStudent,
+  StudentCompletion,
   fetchStudentById,
   fetchStudentActivities,
+  fetchStudentCompletion,
   getSchoolApiErrorMessage,
 } from "@/services/schoolService";
+
+function formatDate(value?: string): string {
+  if (!value) return "Not available";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "Not available";
+
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatStatus(value?: string): string {
+  if (!value) return "Status unavailable";
+
+  return value
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
 
 export default function StudentProfilePage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
 
-  const [student, setStudent] = useState<Student | null>(null);
+  const [student, setStudent] = useState<SchoolStudent | null>(null);
   const [studentActivities, setStudentActivities] = useState<ActivityLog[]>([]);
+  const [completion, setCompletion] = useState<StudentCompletion | null>(null);
+
   const [isLoading, setIsLoading] = useState(true);
   const [studentError, setStudentError] = useState<string | null>(null);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
+  const [completionError, setCompletionError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
 
-    const [studentResult, activitiesResult] = await Promise.allSettled([
+    const [
+      studentResult,
+      activitiesResult,
+      completionResult,
+    ] = await Promise.allSettled([
       fetchStudentById(id),
       fetchStudentActivities(id),
+      fetchStudentCompletion(id),
     ]);
 
     if (studentResult.status === "fulfilled") {
       setStudent(studentResult.value);
       setStudentError(null);
     } else {
-      setStudentError(getSchoolApiErrorMessage(studentResult.reason));
+      setStudentError(
+        getSchoolApiErrorMessage(studentResult.reason),
+      );
     }
 
     if (activitiesResult.status === "fulfilled") {
@@ -44,6 +81,16 @@ export default function StudentProfilePage() {
     } else {
       setActivitiesError(
         getSchoolApiErrorMessage(activitiesResult.reason),
+      );
+    }
+
+    if (completionResult.status === "fulfilled") {
+      setCompletion(completionResult.value);
+      setCompletionError(null);
+    } else {
+      setCompletion(null);
+      setCompletionError(
+        getSchoolApiErrorMessage(completionResult.reason),
       );
     }
 
@@ -65,12 +112,36 @@ export default function StudentProfilePage() {
   };
 
   const hasPlacement = Boolean(
+    student?.placementStatus === "PLACED" ||
     student?.placementCompany?.trim(),
   );
 
-  const hasActivity = studentActivities.length > 0;
+  const isCompleted = completion?.requirements.met === true;
+  const isVerified = student?.verificationStatus === "VERIFIED";
 
-  const totalHours = studentActivities.reduce(
+  const engagementStatus = student?.engagementStatus;
+
+  const engagementLabel =
+    engagementStatus === "ACTIVE"
+      ? "Active"
+      : engagementStatus === "AT_RISK"
+        ? "At risk"
+        : engagementStatus === "INACTIVE"
+          ? "Inactive"
+          : "Status unavailable";
+
+  const engagementClasses =
+    engagementStatus === "ACTIVE"
+      ? "bg-green-50 text-green-700"
+      : engagementStatus === "AT_RISK"
+        ? "bg-amber-50 text-amber-700"
+        : engagementStatus === "INACTIVE"
+          ? "bg-slate-100 text-slate-600"
+          : "bg-slate-100 text-slate-500";
+
+  const placementLabel = hasPlacement ? "Placed" : "Not placed";
+
+  const totalRecordedHours = studentActivities.reduce(
     (total, activityLog) => total + activityLog.hoursWorked,
     0,
   );
@@ -79,11 +150,28 @@ export default function StudentProfilePage() {
     (activityLog) => activityLog.status === "approved",
   ).length;
 
-  const initials = student?.name
-    ?.split(" ")
-    .map((name) => name[0])
-    .slice(0, 2)
-    .join("") || "ST";
+  const completionRequirements = completion?.requirements;
+  const approvedHours = completionRequirements?.totalHours ?? 0;
+  const minimumHours = completionRequirements?.minHours ?? 480;
+  const weeksLogged = completionRequirements?.weeksLogged ?? 0;
+  const minimumWeeks = completionRequirements?.minWeeks ?? 12;
+
+  const hoursProgress = Math.min(
+    100,
+    minimumHours > 0 ? (approvedHours / minimumHours) * 100 : 0,
+  );
+
+  const weeksProgress = Math.min(
+    100,
+    minimumWeeks > 0 ? (weeksLogged / minimumWeeks) * 100 : 0,
+  );
+
+  const initials =
+    student?.name
+      ?.split(" ")
+      .map((name) => name[0])
+      .slice(0, 2)
+      .join("") || "ST";
 
   const statusClasses: Record<ActivityLog["status"], string> = {
     pending: "bg-amber-50 text-amber-700",
@@ -97,65 +185,30 @@ export default function StudentProfilePage() {
       <SchoolNavigation />
 
       <div className="lg:pl-56">
-        {/* Top bar */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
-          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-            <Link href="/school/dashboard" className="hover:text-blue-700 transition-colors">School Dashboard</Link>
-            <span>/</span>
-            <Link href="/school/students" className="hover:text-blue-700 transition-colors">Students</Link>
-            <span>/</span>
-            <span className="text-slate-800 font-semibold">{student?.name || "Student Details"}</span>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-[#10195c]"
+        <SchoolHeader>
+          <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-slate-500">
+            <Link
+              href="/school/dashboard"
+              className="transition-colors hover:text-blue-700"
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                className="h-5 w-5"
-              >
-                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-                <path d="M10 21h4" />
-              </svg>
-            </button>
-
-            <div className="hidden h-8 w-px bg-slate-200 sm:block" />
-
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#10195c] text-xs font-semibold text-white">
-                SC
-              </div>
-
-              <div className="hidden sm:block">
-                <p className="text-sm font-semibold text-[#10195c]">
-                  School Coordinator
-                </p>
-                <p className="text-xs text-slate-500">
-                  SIWES Coordinator
-                </p>
-              </div>
-
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="hidden h-4 w-4 text-slate-500 sm:block"
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </div>
+              School Dashboard
+            </Link>
+            <span>/</span>
+            <Link
+              href="/school/students"
+              className="transition-colors hover:text-blue-700"
+            >
+              Students
+            </Link>
+            <span>/</span>
+            <span className="font-semibold text-slate-800">
+              {student?.name ||
+                (isLoading ? "Loading student..." : "Student")}
+            </span>
           </div>
-        </header>
+        </SchoolHeader>
 
         <main className="mx-auto max-w-7xl px-5 py-7 sm:px-8">
-          {/* Breadcrumb */}
           <Link
             href="/school/students"
             className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 transition hover:text-[#1729c7]"
@@ -172,7 +225,6 @@ export default function StudentProfilePage() {
             Back to Students
           </Link>
 
-          {/* Loading state */}
           {isLoading && !student && (
             <section className="mt-5 rounded-xl border border-slate-200 bg-white px-5 py-16 text-center shadow-sm">
               <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-[#1729c7]" />
@@ -182,7 +234,6 @@ export default function StudentProfilePage() {
             </section>
           )}
 
-          {/* Student API error */}
           {!isLoading && studentError && !student && (
             <section
               role="alert"
@@ -215,10 +266,8 @@ export default function StudentProfilePage() {
             </section>
           )}
 
-          {/* Student profile */}
           {student && (
             <>
-              {/* Activity API error */}
               {activitiesError && (
                 <div
                   role="alert"
@@ -246,6 +295,29 @@ export default function StudentProfilePage() {
                 </div>
               )}
 
+              {completionError && (
+                <div
+                  role="alert"
+                  className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4"
+                >
+                  <p className="text-sm font-semibold text-amber-800">
+                    Official SIWES completion data is unavailable.
+                  </p>
+                  <p className="mt-1 text-xs text-amber-700">
+                    {completionError} Completion status and approved
+                    progress cannot be confirmed until this data loads.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRetry}
+                    disabled={isLoading}
+                    className="mt-3 rounded-lg bg-amber-700 px-4 py-2 text-xs font-medium text-white transition hover:bg-amber-800 disabled:opacity-60"
+                  >
+                    {isLoading ? "Retrying..." : "Retry"}
+                  </button>
+                </div>
+              )}
+
               {/* Profile header */}
               <section className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <div className="h-2 bg-[#1729c7]" />
@@ -264,19 +336,10 @@ export default function StudentProfilePage() {
                           </h1>
 
                           <span
-                            className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${
-                              activitiesError
-                                ? "bg-amber-50 text-amber-700"
-                                : hasActivity
-                                  ? "bg-blue-50 text-blue-700"
-                                  : "bg-slate-100 text-slate-500"
-                            }`}
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${engagementClasses}`}
+                            title="Engagement status supplied by the backend"
                           >
-                            {activitiesError
-                              ? "Unavailable"
-                              : hasActivity
-                                ? "Active"
-                                : "No activity"}
+                            {engagementLabel}
                           </span>
                         </div>
 
@@ -285,12 +348,14 @@ export default function StudentProfilePage() {
                         </p>
 
                         <p className="mt-1 text-xs text-slate-400">
-                          {student.department} · {student.level}
+                          {student.department}
+                          {" | "}
+                          {student.level}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${
                           hasPlacement
@@ -300,31 +365,40 @@ export default function StudentProfilePage() {
                       >
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${
-                            hasPlacement ? "bg-green-500" : "bg-amber-500"
+                            hasPlacement
+                              ? "bg-green-500"
+                              : "bg-amber-500"
                           }`}
                         />
-                        {hasPlacement ? "Placed" : "Not placed"}
+                        {placementLabel}
                       </span>
+
+                      {completion && (
+                        <span
+                          className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                            isCompleted
+                              ? "bg-blue-50 text-blue-700"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {isCompleted
+                            ? "SIWES completed"
+                            : "SIWES in progress"}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
               </section>
 
-              {/* Overview */}
+              {/* Overview cards */}
               <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-slate-500">
-                      Activities
-                    </p>
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eef0ff] text-[#1729c7]">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                        <path d="M3 12h4l2-7 4 14 2-7h6" />
-                      </svg>
-                    </div>
-                  </div>
+                  <p className="text-xs font-medium text-slate-500">
+                    Activities
+                  </p>
                   <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                    {activitiesError ? "—" : studentActivities.length}
+                    {activitiesError ? "N/A" : studentActivities.length}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
                     Activity logs submitted
@@ -332,38 +406,23 @@ export default function StudentProfilePage() {
                 </article>
 
                 <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-slate-500">
-                      Hours Worked
-                    </p>
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eef0ff] text-[#1729c7]">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                        <circle cx="12" cy="12" r="9" />
-                        <path d="M12 7v5l3 2" />
-                      </svg>
-                    </div>
-                  </div>
+                  <p className="text-xs font-medium text-slate-500">
+                    Recorded hours
+                  </p>
                   <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                    {activitiesError ? "—" : totalHours}
+                    {activitiesError ? "N/A" : totalRecordedHours}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    Total recorded hours
+                    All submitted activity logs
                   </p>
                 </article>
 
                 <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-slate-500">
-                      Approved
-                    </p>
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-50 text-green-600">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                        <path d="M20 6 9 17l-5-5" />
-                      </svg>
-                    </div>
-                  </div>
+                  <p className="text-xs font-medium text-slate-500">
+                    Approved activities
+                  </p>
                   <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                    {activitiesError ? "—" : approvedActivities}
+                    {activitiesError ? "N/A" : approvedActivities}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
                     Approved activity logs
@@ -371,28 +430,177 @@ export default function StudentProfilePage() {
                 </article>
 
                 <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-slate-500">
-                      Placement
-                    </p>
-                    <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                        hasPlacement
-                          ? "bg-green-50 text-green-600"
-                          : "bg-amber-50 text-amber-600"
-                      }`}
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                        <rect x="3" y="7" width="18" height="13" rx="2" />
-                        <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                      </svg>
-                    </div>
-                  </div>
+                  <p className="text-xs font-medium text-slate-500">
+                    Placement
+                  </p>
                   <p className="mt-3 text-sm font-semibold text-[#10195c]">
-                    {hasPlacement ? "Placed" : "Not placed"}
+                    {placementLabel}
                   </p>
                   <p className="mt-1 truncate text-xs text-slate-400">
                     {student.placementCompany || "No company assigned"}
+                  </p>
+                </article>
+              </section>
+
+              {/* Official completion progress */}
+              <section
+                className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
+                aria-labelledby="completion-heading"
+              >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2
+                      id="completion-heading"
+                      className="text-base font-semibold text-[#10195c]"
+                    >
+                      SIWES Completion Progress
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Official progress based on backend completion requirements
+                      and approved activity records.
+                    </p>
+                  </div>
+
+                  {completion && (
+                    <span
+                      className={`w-fit rounded-full px-3 py-1.5 text-xs font-medium ${
+                        isCompleted
+                          ? "bg-green-50 text-green-700"
+                          : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {isCompleted ? "Requirements met" : "Requirements not yet met"}
+                    </span>
+                  )}
+                </div>
+
+                {completionError ? (
+                  <p className="mt-5 rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
+                    Completion progress is unavailable. The page will not
+                    estimate official completion from submitted activity logs.
+                  </p>
+                ) : completion ? (
+                  <div className="mt-6 grid gap-6 md:grid-cols-2">
+                    <div>
+                      <div className="flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-medium text-slate-500">
+                            Approved training hours
+                          </p>
+                          <p className="mt-2 text-2xl font-semibold text-[#10195c]">
+                            {approvedHours.toLocaleString()}{" "}
+                            <span className="text-sm font-normal text-slate-400">
+                              / {minimumHours.toLocaleString()} hours
+                            </span>
+                          </p>
+                        </div>
+                        <span className="text-xs font-semibold text-[#1729c7]">
+                          {Math.round(hoursProgress)}%
+                        </span>
+                      </div>
+
+                      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-[#1729c7] transition-all"
+                          style={{ width: `${hoursProgress}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-medium text-slate-500">
+                            Training weeks logged
+                          </p>
+                          <p className="mt-2 text-2xl font-semibold text-[#10195c]">
+                            {weeksLogged}{" "}
+                            <span className="text-sm font-normal text-slate-400">
+                              / {minimumWeeks} weeks
+                            </span>
+                          </p>
+                        </div>
+                        <span className="text-xs font-semibold text-[#1729c7]">
+                          {Math.round(weeksProgress)}%
+                        </span>
+                      </div>
+
+                      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-[#1729c7] transition-all"
+                          style={{ width: `${weeksProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-5 text-sm text-slate-500">
+                    Completion requirements have not loaded.
+                  </p>
+                )}
+
+                <p className="mt-4 text-xs leading-5 text-slate-400">
+                  Only approved activity entries count towards official
+                  completion hours and weeks. Pending and revision-requested
+                  entries are excluded by the backend.
+                </p>
+              </section>
+
+              {/* Monitoring and verification */}
+              <section
+                className="mt-5 grid gap-3 sm:grid-cols-3"
+                aria-label="Student monitoring and verification status"
+              >
+                <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-medium text-slate-500">
+                    Engagement status
+                  </p>
+                  <p className="mt-2 text-base font-semibold text-[#10195c]">
+                    {engagementLabel}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                    Engagement status supplied by the backend.
+                  </p>
+                </article>
+
+                <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-medium text-slate-500">
+                    SIWES completion
+                  </p>
+                  <p
+                    className={`mt-2 text-base font-semibold ${
+                      isCompleted ? "text-green-700" : "text-[#10195c]"
+                    }`}
+                  >
+                    {completionError
+                      ? "Status unavailable"
+                      : completion
+                        ? isCompleted
+                          ? "Completed"
+                          : "In progress"
+                        : "Status unavailable"}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                    Confirmed using the backend completion requirements,
+                    not placement status.
+                  </p>
+                </article>
+
+                <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-medium text-slate-500">
+                    Profile verification
+                  </p>
+                  <p
+                    className={`mt-2 text-base font-semibold ${
+                      isVerified ? "text-green-700" : "text-[#10195c]"
+                    }`}
+                  >
+                    {formatStatus(student.verificationStatus)}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                    {isVerified
+                      ? "Student profile and clearance documents are approved."
+                      : "Shows the backend verification status for this student."}
                   </p>
                 </article>
               </section>
@@ -412,7 +620,7 @@ export default function StudentProfilePage() {
                       Activity History
                     </h2>
                     <p className="mt-1 text-xs text-slate-500">
-                      Recent SIWES activity submitted by this student.
+                      SIWES activity submitted by this student.
                     </p>
                   </div>
 
@@ -428,7 +636,13 @@ export default function StudentProfilePage() {
                   ) : studentActivities.length === 0 ? (
                     <div className="px-5 py-10 text-center sm:px-6">
                       <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          className="h-5 w-5"
+                        >
                           <path d="M3 12h4l2-7 4 14 2-7h6" />
                         </svg>
                       </div>
@@ -442,11 +656,9 @@ export default function StudentProfilePage() {
                   ) : (
                     <div className="divide-y divide-slate-100">
                       {studentActivities.map((activityLog) => {
-                        const statusLabel = activityLog.status
-                          .replace("_", " ")
-                          .replace(/\b\w/g, (character) =>
-                            character.toUpperCase(),
-                          );
+                        const statusLabel = formatStatus(
+                          activityLog.status,
+                        );
 
                         return (
                           <article
@@ -465,8 +677,11 @@ export default function StudentProfilePage() {
                                     {statusLabel}
                                   </span>
                                 </div>
+
                                 <p className="mt-1 text-xs text-slate-400">
-                                  {activityLog.date} · {activityLog.hoursWorked} hours
+                                  {formatDate(activityLog.date)}
+                                  {" | "}
+                                  {activityLog.hoursWorked} hours
                                 </p>
                               </div>
                             </div>
@@ -481,14 +696,16 @@ export default function StudentProfilePage() {
                                   Skills acquired
                                 </p>
                                 <div className="mt-2 flex flex-wrap gap-2">
-                                  {activityLog.skillsAcquired.map((skill) => (
-                                    <span
-                                      key={skill}
-                                      className="rounded-full bg-[#f3f4ff] px-2.5 py-1 text-[10px] font-medium text-[#4b55b5]"
-                                    >
-                                      {skill}
-                                    </span>
-                                  ))}
+                                  {activityLog.skillsAcquired.map(
+                                    (skill, index) => (
+                                      <span
+                                        key={`${skill}-${index}`}
+                                        className="rounded-full bg-[#f3f4ff] px-2.5 py-1 text-[10px] font-medium text-[#4b55b5]"
+                                      >
+                                        {skill}
+                                      </span>
+                                    ),
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -520,10 +737,19 @@ export default function StudentProfilePage() {
                     <dl className="mt-4 space-y-4">
                       <div>
                         <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                          University
+                          School
                         </dt>
                         <dd className="mt-1 text-sm font-medium text-slate-700">
-                          {student.university}
+                          {student.schoolName || student.university || "N/A"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Faculty
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.faculty || "N/A"}
                         </dd>
                       </div>
 
@@ -533,6 +759,15 @@ export default function StudentProfilePage() {
                         </dt>
                         <dd className="mt-1 text-sm font-medium text-slate-700">
                           {student.department}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Programme
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.programme || "N/A"}
                         </dd>
                       </div>
 
@@ -553,9 +788,46 @@ export default function StudentProfilePage() {
                           {student.matricNumber}
                         </dd>
                       </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Email
+                        </dt>
+                        <dd className="mt-1 break-all text-sm font-medium text-slate-700">
+                          {student.email || "N/A"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Phone
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.phoneNumber || "N/A"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Academic Session
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.academicSession || "N/A"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          SIWES Session
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.siwesSession || "N/A"}
+                        </dd>
+                      </div>
                     </dl>
                   </section>
 
+                  {/* Placement details */}
                   <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-sm font-semibold text-[#10195c]">
@@ -568,30 +840,155 @@ export default function StudentProfilePage() {
                             : "bg-amber-50 text-amber-700"
                         }`}
                       >
-                        {hasPlacement ? "Placed" : "Not placed"}
+                        {placementLabel}
                       </span>
                     </div>
 
-                    <div className="mt-4 rounded-lg bg-[#f8f9fc] p-3">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                        Company
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-[#10195c]">
-                        {student.placementCompany || "No placement assigned"}
-                      </p>
-                    </div>
+                    <dl className="mt-4 space-y-4">
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Company
+                        </dt>
+                        <dd className="mt-1 text-sm font-semibold text-[#10195c]">
+                          {student.placementCompany || "No placement assigned"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Role / Position
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.placementTitle || "N/A"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Placement Department
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.placementDepartment || "N/A"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Location
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.placementLocation || "N/A"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Work Mode
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {formatStatus(student.placementWorkMode)}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Approval Status
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {formatStatus(student.placementApprovalStatus)}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Start Date
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {formatDate(student.placementStartDate)}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          End Date
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {formatDate(student.placementEndDate)}
+                        </dd>
+                      </div>
+                    </dl>
 
                     <Link
                       href="/school/placements"
                       className="mt-4 inline-flex text-xs font-medium text-[#1729c7] hover:underline"
                     >
-                      View placements →
+                      View placements
                     </Link>
+                  </section>
+
+                  {/* Supervisor details */}
+                  <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <h2 className="text-sm font-semibold text-[#10195c]">
+                      Industry Supervisor
+                    </h2>
+
+                    <dl className="mt-4 space-y-4">
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Full Name
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.supervisorName || "Not assigned"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Position
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.supervisorPosition || "N/A"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Department
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.supervisorDepartment || "N/A"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Email
+                        </dt>
+                        <dd className="mt-1 break-all text-sm font-medium text-slate-700">
+                          {student.supervisorEmail || "N/A"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          Phone
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-700">
+                          {student.supervisorPhone || "N/A"}
+                        </dd>
+                      </div>
+                    </dl>
                   </section>
 
                   <section className="rounded-xl bg-[#e8e8ff] p-5">
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#1729c7]">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        className="h-5 w-5"
+                      >
                         <path d="M12 3 2.5 20h19L12 3Z" />
                         <path d="M12 9v5" />
                         <path d="M12 17h.01" />
@@ -602,14 +999,14 @@ export default function StudentProfilePage() {
                       Monitoring note
                     </h2>
                     <p className="mt-2 text-xs leading-5 text-[#363d78]">
-                      Review this student&apos;s activity submissions regularly to
-                      keep track of SIWES participation and progress.
+                      Review this student&apos;s activity submissions regularly
+                      to keep track of SIWES participation and progress.
                     </p>
                     <Link
                       href="/school/activity-monitoring"
                       className="mt-4 inline-flex text-xs font-semibold text-[#1729c7] hover:underline"
                     >
-                      Check activity →
+                      Check activity
                     </Link>
                   </section>
                 </aside>

@@ -1,4 +1,14 @@
-﻿export type ActivityStatus = 'pending' | 'approved' | 'rejected' | 'revision_requested';
+﻿
+export type ActivityStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "revision_requested";
+
+export type EngagementStatus =
+  | "ACTIVE"
+  | "AT_RISK"
+  | "INACTIVE";
 
 export interface Student {
   id: string;
@@ -8,6 +18,9 @@ export interface Student {
   department: string;
   level: string;
   placementCompany: string;
+  engagementStatus?: EngagementStatus;
+  placementStatus?: string;
+  verificationStatus?: string;
   avatarUrl?: string;
 }
 
@@ -19,7 +32,7 @@ export interface ActivityLog {
   description: string;
   hoursWorked: number;
   skillsAcquired: string[];
-  evidenceUrls: string[]; // URLs to uploaded JPEGs or documents
+  evidenceUrls: string[];
   status: ActivityStatus;
   supervisorFeedback?: string;
 }
