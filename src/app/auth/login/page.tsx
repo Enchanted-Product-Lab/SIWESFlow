@@ -76,7 +76,7 @@ export default function LoginPage() {
         <div className="z-10">
           <div className="flex items-center gap-3">
             <Image 
-              src="/siwesflow_logo.png" 
+              src="/siwesflow_logo_white.png"
               alt="SIWESFlow" 
               width={240} 
               height={75} 
