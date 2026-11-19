@@ -50,14 +50,24 @@ const navigationItems = [
       </svg>
     ),
   },
+  {
+    label: "Verification",
+    href: "/school/verifications",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+        <path d="M8 3h7l5 5v13H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+        <path d="M15 3v5h5" />
+        <path d="m10 15 2 2 4-4" />
+      </svg>
+    ),
+  },
 ];
 
 export default function SchoolNavigation() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-full flex-col bg-[#07145c] text-white lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:w-56">
-      {/* Logo */}
+    <aside className="hidden w-full flex-col bg-[#07145c] text-white lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-56">
       <div className="flex h-16 items-center border-b border-white/10 px-6">
         <Link
           href="/school/dashboard"
@@ -75,10 +85,11 @@ export default function SchoolNavigation() {
         </Link>
       </div>
 
-      {/* Navigation */}
       <nav className="flex flex-1 flex-col gap-1 p-3">
         {navigationItems.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive =
+            pathname === item.href ||
+            pathname.startsWith(`${item.href}/`);
 
           return (
             <Link
@@ -97,7 +108,6 @@ export default function SchoolNavigation() {
         })}
       </nav>
 
-      {/* Footer */}
       <div className="border-t border-white/10 p-4">
         <p className="text-xs font-semibold text-white/55">SIWESFlow</p>
         <p className="mt-1 text-xs font-medium text-white/70">

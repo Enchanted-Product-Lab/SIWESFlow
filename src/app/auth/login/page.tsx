@@ -47,8 +47,8 @@ export default function LoginPage() {
       // Route based on RBAC roles (fallback to student onboarding/dashboard)
       if (user?.role === 'SUPERVISOR') {
         router.push('/supervisor/dashboard');
-      } else if (user?.role === 'SCHOOL_COORDINATOR' || user?.role === 'SCHOOL') {
-        router.push('/school/dashboard');
+      }else if (user?.role === "SCHOOL_COORDINATOR") {
+        router.push("/school/dashboard");
       } else {
         router.push('/student/onboarding');
       }

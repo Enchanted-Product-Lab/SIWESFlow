@@ -3,15 +3,29 @@
 
 import Link from "next/link";
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityLog, Student } from "@/types";
+import SchoolHeader from "@/components/shared/SchoolHeader";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ActivityLog, ActivityStatus, Student } from "@/types";
 import {
   fetchActivitiesWithFallback,
   fetchStudentsWithFallback,
   getSchoolApiErrorMessage,
 } from "@/services/schoolService";
 
-const statusStyles = {
+const statusStyles: Record<
+  ActivityStatus,
+  {
+    label: string;
+    className: string;
+    dotClassName: string;
+  }
+> = {
   pending: {
     label: "Pending",
     className: "bg-amber-50 text-amber-700",
@@ -32,28 +46,51 @@ const statusStyles = {
     className: "bg-purple-50 text-purple-700",
     dotClassName: "bg-purple-500",
   },
-} as const;
+};
+
+type ActivityFilter = "all" | ActivityStatus;
+
+const statusFilters: ActivityFilter[] = [
+  "all",
+  "pending",
+  "approved",
+  "rejected",
+  "revision_requested",
+];
 
 export default function SchoolActivityMonitoringPage() {
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] =
+    useState<ActivityFilter>("all");
 
   const [isLoading, setIsLoading] = useState(true);
-  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+  const [activitiesError, setActivitiesError] = useState<string | null>(
+    null,
+  );
   const [studentsError, setStudentsError] = useState<string | null>(null);
 
+  const requestId = useRef(0);
+
   const loadData = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
+
+    setIsLoading(true);
+
     const [activitiesResult, studentsResult] = await Promise.allSettled([
       fetchActivitiesWithFallback(),
       fetchStudentsWithFallback(),
     ]);
 
+    // Ignore responses from older requests.
+    if (currentRequestId !== requestId.current) return;
+
     if (activitiesResult.status === "fulfilled") {
       setActivities(activitiesResult.value);
       setActivitiesError(null);
     } else {
+      setActivities([]);
       setActivitiesError(
         getSchoolApiErrorMessage(activitiesResult.reason),
       );
@@ -63,9 +100,8 @@ export default function SchoolActivityMonitoringPage() {
       setStudents(studentsResult.value);
       setStudentsError(null);
     } else {
-      setStudentsError(
-        getSchoolApiErrorMessage(studentsResult.reason),
-      );
+      setStudents([]);
+      setStudentsError(getSchoolApiErrorMessage(studentsResult.reason));
     }
 
     setIsLoading(false);
@@ -78,73 +114,72 @@ export default function SchoolActivityMonitoringPage() {
 
     return () => {
       window.clearTimeout(timeoutId);
+      requestId.current += 1;
     };
   }, [loadData]);
 
   const handleRetry = () => {
-    setIsLoading(true);
     void loadData();
   };
 
   const totalActivities = activities.length;
 
   const pendingActivities = activities.filter(
-    (activityLog) => activityLog.status === "pending",
+    (activity) => activity.status === "pending",
   ).length;
 
   const approvedActivities = activities.filter(
-    (activityLog) => activityLog.status === "approved",
+    (activity) => activity.status === "approved",
   ).length;
 
-  const totalHours = activities.reduce(
-    (total, activityLog) => total + activityLog.hoursWorked,
+  // This represents all submitted activity hours, not official
+  // SIWES completion hours.
+  const totalSubmittedHours = activities.reduce(
+    (total, activity) => total + activity.hoursWorked,
     0,
   );
 
-  const activeStudentIds = useMemo(
-    () => new Set(activities.map((activityLog) => activityLog.studentId)),
-    [activities],
+  const activeStudents = students.filter(
+    (student) => student.engagementStatus === "ACTIVE",
   );
 
-  const studentsWithActivity = students.filter((student) =>
-    activeStudentIds.has(student.id),
-  ).length;
-
-  const studentsWithoutActivity = students.filter(
-    (student) => !activeStudentIds.has(student.id),
+  const atRiskStudents = students.filter(
+    (student) => student.engagementStatus === "AT_RISK",
   );
+
+  // Engagement status is independent of official SIWES completion.
+  const inactiveStudents = students.filter(
+    (student) => student.engagementStatus === "INACTIVE",
+  );
+
+  const studentsNeedingAttention = [
+    ...atRiskStudents,
+    ...inactiveStudents,
+  ];
 
   const getStudent = useCallback(
-    (studentId: string) =>
-      students.find((student) => student.id === studentId) || {
-        id: studentId,
-        name: "Student " + studentId,
-        matricNumber: "MAT/2026",
-        university: "Institution",
-        department: "SIWES Department",
-        level: "300 Level",
-        placementCompany: "Placement Company",
-      },
+    (studentId: string): Student | undefined =>
+      students.find((student) => student.id === studentId),
     [students],
   );
 
   const filteredActivities = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const query = searchQuery.trim().toLowerCase();
 
     return activities.filter((log) => {
       if (statusFilter !== "all" && log.status !== statusFilter) {
         return false;
       }
 
-      if (!q) return true;
+      if (!query) return true;
 
       const student = getStudent(log.studentId);
 
       return (
-        log.title.toLowerCase().includes(q) ||
-        log.description.toLowerCase().includes(q) ||
-        student.name.toLowerCase().includes(q) ||
-        student.matricNumber.toLowerCase().includes(q)
+        log.title.toLowerCase().includes(query) ||
+        log.description.toLowerCase().includes(query) ||
+        student?.name.toLowerCase().includes(query) ||
+        student?.matricNumber.toLowerCase().includes(query)
       );
     });
   }, [activities, searchQuery, statusFilter, getStudent]);
@@ -154,64 +189,9 @@ export default function SchoolActivityMonitoringPage() {
       <SchoolNavigation />
 
       <div className="lg:pl-56">
-        {/* Top bar */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
-          <div>
-
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Notifications */}
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-[#10195c]"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                className="h-5 w-5"
-              >
-                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-                <path d="M10 21h4" />
-              </svg>
-            </button>
-
-            <div className="hidden h-8 w-px bg-slate-200 sm:block" />
-
-            {/* Coordinator */}
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#10195c] text-xs font-semibold text-white">
-                SC
-              </div>
-
-              <div className="hidden sm:block">
-                <p className="text-sm font-semibold text-[#10195c]">
-                  School Coordinator
-                </p>
-
-                <p className="text-xs text-slate-500">
-                  SIWES Coordinator
-                </p>
-              </div>
-
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="hidden h-4 w-4 text-slate-500 sm:block"
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </div>
-          </div>
-        </header>
+        <SchoolHeader />
 
         <main className="mx-auto max-w-7xl px-5 py-7 sm:px-8">
-          {/* Page heading */}
           <section className="mb-7">
             <p className="text-sm font-medium text-[#1729c7]">
               SIWES Monitoring
@@ -245,13 +225,11 @@ export default function SchoolActivityMonitoringPage() {
                   <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
                   <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                 </svg>
-
                 View students
               </Link>
             </div>
           </section>
 
-          {/* API error alert */}
           {(activitiesError || studentsError) && (
             <div
               role="alert"
@@ -288,153 +266,75 @@ export default function SchoolActivityMonitoringPage() {
             </div>
           )}
 
-          {/* Summary cards */}
           <section
             className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
             aria-label="Activity summary"
           >
             <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-slate-500">
-                  Total Activities
-                </p>
-
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eef0ff] text-[#1729c7]">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="h-4 w-4"
-                  >
-                    <path d="M3 12h4l2-7 4 14 2-7h6" />
-                  </svg>
-                </div>
-              </div>
-
-              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {activitiesError ? "—" : totalActivities}
+              <p className="text-xs font-medium text-slate-500">
+                Total Activities
               </p>
-
+              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
+                {isLoading || activitiesError ? "—" : totalActivities}
+              </p>
               <p className="mt-1 text-xs text-slate-400">
                 Submitted activity logs
               </p>
             </article>
 
             <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-slate-500">
-                  Pending Review
-                </p>
-
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-50 text-amber-600">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="h-4 w-4"
-                  >
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M12 7v5l3 2" />
-                  </svg>
-                </div>
-              </div>
-
-              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {activitiesError ? "—" : pendingActivities}
+              <p className="text-xs font-medium text-slate-500">
+                Pending Review
               </p>
-
+              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
+                {isLoading || activitiesError ? "—" : pendingActivities}
+              </p>
               <p className="mt-1 text-xs text-slate-400">
                 Awaiting supervisor action
               </p>
             </article>
 
             <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-slate-500">
-                  Approved
-                </p>
-
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-50 text-green-600">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="h-4 w-4"
-                  >
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
-                </div>
-              </div>
-
-              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {activitiesError ? "—" : approvedActivities}
+              <p className="text-xs font-medium text-slate-500">
+                Approved
               </p>
-
+              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
+                {isLoading || activitiesError ? "—" : approvedActivities}
+              </p>
               <p className="mt-1 text-xs text-slate-400">
                 Supervisor-approved logs
               </p>
             </article>
 
             <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-slate-500">
-                  Hours Logged
-                </p>
-
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eef0ff] text-[#1729c7]">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="h-4 w-4"
-                  >
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M12 7v5l3 2" />
-                  </svg>
-                </div>
-              </div>
-
-              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {activitiesError ? "—" : totalHours}
+              <p className="text-xs font-medium text-slate-500">
+                Hours Logged
               </p>
-
+              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
+                {isLoading || activitiesError ? "—" : totalSubmittedHours}
+              </p>
               <p className="mt-1 text-xs text-slate-400">
-                Across submitted activities
+                Across all submitted activities
               </p>
             </article>
           </section>
 
-          {/* Activity monitoring */}
           <section className="mt-6" aria-labelledby="activity-monitoring">
-            <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-              <div>
-                <h2
-                  id="activity-monitoring"
-                  className="text-base font-semibold text-[#10195c]"
-                >
-                  Activity Submissions
-                </h2>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Review activity logs submitted by students in the SIWES
-                  programme.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                className="w-fit rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm transition hover:border-[#7b83e8] hover:text-[#1729c7]"
+            <div className="mb-3">
+              <h2
+                id="activity-monitoring"
+                className="text-base font-semibold text-[#10195c]"
               >
-                Filter
-              </button>
+                Activity Submissions
+              </h2>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Review activity logs submitted by students in the SIWES
+                programme.
+              </p>
             </div>
 
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              {/* Search / filters */}
               <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="relative w-full lg:max-w-sm">
                   <svg
@@ -458,141 +358,159 @@ export default function SchoolActivityMonitoringPage() {
                   />
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    "all",
-                    "pending",
-                    "approved",
-                    "rejected",
-                    "revision_requested",
-                  ].map((st) => (
-                    <button
-                      key={st}
-                      type="button"
-                      onClick={() => setStatusFilter(st)}
-                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium capitalize transition ${
-                        statusFilter === st
-                          ? "border-[#1729c7] bg-[#eef0ff] text-[#1729c7]"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-[#7b83e8]"
-                      }`}
-                    >
-                      {st.replace("_", " ")}
-                    </button>
-                  ))}
+                <div
+                  className="flex flex-wrap gap-2"
+                  aria-label="Filter activities by status"
+                >
+                  {statusFilters.map((status) => {
+                    const label =
+                      status === "all"
+                        ? "All"
+                        : statusStyles[status].label;
+
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setStatusFilter(status)}
+                        aria-pressed={statusFilter === status}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                          statusFilter === status
+                            ? "border-[#1729c7] bg-[#eef0ff] text-[#1729c7]"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-[#7b83e8]"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Desktop table */}
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[900px] text-left">
                   <thead className="border-b border-slate-200 bg-[#fafbfe]">
                     <tr>
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Student
-                      </th>
-
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Activity
-                      </th>
-
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Date
-                      </th>
-
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Hours
-                      </th>
-
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Status
-                      </th>
-
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Action
-                      </th>
+                      {[
+                        "Student",
+                        "Activity",
+                        "Date",
+                        "Hours",
+                        "Status",
+                        "Action",
+                      ].map((heading) => (
+                        <th
+                          key={heading}
+                          className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                        >
+                          {heading}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
-                    {filteredActivities.map((activityLog) => {
-                      const student = getStudent(activityLog.studentId);
-                      const status = statusStyles[activityLog.status];
+                    {!isLoading &&
+                      !activitiesError &&
+                      filteredActivities.map((activity) => {
+                        const student = getStudent(activity.studentId);
+                        const status = statusStyles[activity.status];
 
-                      const initials = student.name
-                        .split(" ")
-                        .map((name) => name[0])
-                        .slice(0, 2)
-                        .join("");
+                        const initials = student
+                          ? student.name
+                              .split(" ")
+                              .map((name) => name[0])
+                              .slice(0, 2)
+                              .join("")
+                          : "?";
 
-                      return (
-                        <tr
-                          key={activityLog.id}
-                          className="transition hover:bg-slate-50"
-                        >
-                          <td className="px-5 py-4">
-                            <Link
-                              href={`/school/students/${student.id}`}
-                              className="group flex items-center gap-3"
-                            >
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eef0ff] text-xs font-semibold text-[#1729c7]">
-                                {initials}
-                              </div>
+                        return (
+                          <tr
+                            key={activity.id}
+                            className="transition hover:bg-slate-50"
+                          >
+                            <td className="px-5 py-4">
+                              {student ? (
+                                <Link
+                                  href={`/school/students/${encodeURIComponent(student.id)}`}
+                                  className="group flex items-center gap-3"
+                                >
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eef0ff] text-xs font-semibold text-[#1729c7]">
+                                    {initials}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-[#10195c] group-hover:text-[#1729c7]">
+                                      {student.name}
+                                    </p>
+                                    <p className="text-xs text-slate-400">
+                                      {student.matricNumber}
+                                    </p>
+                                  </div>
+                                </Link>
+                              ) : (
+                                <div className="flex items-center gap-3">
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-500">
+                                    {initials}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-slate-600">
+                                      Student record unavailable
+                                    </p>
+                                    <p className="text-xs text-slate-400">
+                                      ID: {activity.studentId || "Unavailable"}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                            </td>
 
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold text-[#10195c] group-hover:text-[#1729c7]">
-                                  {student.name}
-                                </p>
+                            <td className="max-w-[260px] px-5 py-4">
+                              <p className="truncate text-sm font-medium text-slate-700">
+                                {activity.title}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-slate-400">
+                                {activity.description}
+                              </p>
+                            </td>
 
-                                <p className="text-xs text-slate-400">
-                                  {student.matricNumber}
-                                </p>
-                              </div>
-                            </Link>
-                          </td>
+                            <td className="px-5 py-4 text-sm text-slate-600">
+                              {activity.date}
+                            </td>
 
-                          <td className="max-w-[260px] px-5 py-4">
-                            <p className="truncate text-sm font-medium text-slate-700">
-                              {activityLog.title}
-                            </p>
+                            <td className="px-5 py-4 text-sm font-medium text-slate-600">
+                              {activity.hoursWorked}h
+                            </td>
 
-                            <p className="mt-1 truncate text-xs text-slate-400">
-                              {activityLog.description}
-                            </p>
-                          </td>
-
-                          <td className="px-5 py-4 text-sm text-slate-600">
-                            {activityLog.date}
-                          </td>
-
-                          <td className="px-5 py-4 text-sm font-medium text-slate-600">
-                            {activityLog.hoursWorked}h
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span
-                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ${status.className}`}
-                            >
+                            <td className="px-5 py-4">
                               <span
-                                className={`h-1.5 w-1.5 rounded-full ${status.dotClassName}`}
-                              />
+                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ${status.className}`}
+                              >
+                                <span
+                                  className={`h-1.5 w-1.5 rounded-full ${status.dotClassName}`}
+                                />
+                                {status.label}
+                              </span>
+                            </td>
 
-                              {status.label}
-                            </span>
-                          </td>
+                            <td className="px-5 py-4">
+                              {student ? (
+                                <Link
+                                  href={`/school/students/${encodeURIComponent(student.id)}`}
+                                  className="text-xs font-medium text-[#1729c7] hover:underline"
+                                >
+                                  View student
+                                </Link>
+                              ) : (
+                                <span className="text-xs text-slate-400">
+                                  Unavailable
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
 
-                          <td className="px-5 py-4">
-                            <Link
-                              href={`/school/students/${student.id}`}
-                              className="text-xs font-medium text-[#1729c7] hover:underline"
-                            >
-                              View student
-                            </Link>
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                    {activitiesError && (
+                    {activitiesError && !isLoading && (
                       <tr>
                         <td
                           colSpan={6}
@@ -632,112 +550,119 @@ export default function SchoolActivityMonitoringPage() {
                 </table>
               </div>
 
-              {/* Mobile cards */}
               <div className="divide-y divide-slate-100 md:hidden">
-                {filteredActivities.map((activityLog) => {
-                  const student = getStudent(activityLog.studentId);
-                  const status = statusStyles[activityLog.status];
+                {!isLoading &&
+                  !activitiesError &&
+                  filteredActivities.map((activity) => {
+                    const student = getStudent(activity.studentId);
+                    const status = statusStyles[activity.status];
 
-                  const initials = student.name
-                    .split(" ")
-                    .map((name) => name[0])
-                    .slice(0, 2)
-                    .join("");
+                    const initials = student
+                      ? student.name
+                          .split(" ")
+                          .map((name) => name[0])
+                          .slice(0, 2)
+                          .join("")
+                      : "?";
 
-                  return (
-                    <article
-                      key={activityLog.id}
-                      className="p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <Link
-                          href={`/school/students/${student.id}`}
-                          className="flex min-w-0 items-center gap-3"
-                        >
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef0ff] text-sm font-semibold text-[#1729c7]">
-                            {initials}
-                          </div>
+                    return (
+                      <article key={activity.id} className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          {student ? (
+                            <Link
+                              href={`/school/students/${encodeURIComponent(student.id)}`}
+                              className="flex min-w-0 items-center gap-3"
+                            >
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef0ff] text-sm font-semibold text-[#1729c7]">
+                                {initials}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-[#10195c]">
+                                  {student.name}
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-400">
+                                  {student.matricNumber}
+                                </p>
+                              </div>
+                            </Link>
+                          ) : (
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
+                                ?
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-slate-600">
+                                  Student record unavailable
+                                </p>
+                                <p className="mt-0.5 truncate text-xs text-slate-400">
+                                  ID: {activity.studentId || "Unavailable"}
+                                </p>
+                              </div>
+                            </div>
+                          )}
 
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-[#10195c]">
-                              {student.name}
-                            </p>
-
-                            <p className="mt-0.5 text-xs text-slate-400">
-                              {student.matricNumber}
-                            </p>
-                          </div>
-                        </Link>
-
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-medium ${status.className}`}
-                        >
-                          {status.label}
-                        </span>
-                      </div>
-
-                      <div className="mt-4">
-                        <p className="text-sm font-semibold text-[#10195c]">
-                          {activityLog.title}
-                        </p>
-
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          {activityLog.description}
-                        </p>
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
-                        <div>
-                          <p className="text-[11px] text-slate-400">
-                            Date
-                          </p>
-
-                          <p className="mt-1 text-xs font-medium text-slate-600">
-                            {activityLog.date}
-                          </p>
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-medium ${status.className}`}
+                          >
+                            {status.label}
+                          </span>
                         </div>
 
-                        <div>
-                          <p className="text-[11px] text-slate-400">
-                            Hours
-                          </p>
-
-                          <p className="mt-1 text-xs font-medium text-slate-600">
-                            {activityLog.hoursWorked} hours
-                          </p>
-                        </div>
-                      </div>
-
-                      {activityLog.skillsAcquired.length > 0 && (
                         <div className="mt-4">
-                          <p className="text-[11px] text-slate-400">
-                            Skills acquired
+                          <p className="text-sm font-semibold text-[#10195c]">
+                            {activity.title}
                           </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {activity.description}
+                          </p>
+                        </div>
 
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {activityLog.skillsAcquired.map((skill) => (
-                              <span
-                                key={skill}
-                                className="rounded-full bg-[#f3f4ff] px-2.5 py-1 text-[10px] font-medium text-[#4b55b5]"
-                              >
-                                {skill}
-                              </span>
-                            ))}
+                        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+                          <div>
+                            <p className="text-[11px] text-slate-400">Date</p>
+                            <p className="mt-1 text-xs font-medium text-slate-600">
+                              {activity.date}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] text-slate-400">Hours</p>
+                            <p className="mt-1 text-xs font-medium text-slate-600">
+                              {activity.hoursWorked} hours
+                            </p>
                           </div>
                         </div>
-                      )}
 
-                      <Link
-                        href={`/school/students/${student.id}`}
-                        className="mt-4 inline-flex text-xs font-semibold text-[#1729c7] hover:underline"
-                      >
-                        View student →
-                      </Link>
-                    </article>
-                  );
-                })}
+                        {activity.skillsAcquired.length > 0 && (
+                          <div className="mt-4">
+                            <p className="text-[11px] text-slate-400">
+                              Skills acquired
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {activity.skillsAcquired.map((skill) => (
+                                <span
+                                  key={skill}
+                                  className="rounded-full bg-[#f3f4ff] px-2.5 py-1 text-[10px] font-medium text-[#4b55b5]"
+                                >
+                                  {skill}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
-                {activitiesError && (
+                        {student && (
+                          <Link
+                            href={`/school/students/${encodeURIComponent(student.id)}`}
+                            className="mt-4 inline-flex text-xs font-semibold text-[#1729c7] hover:underline"
+                          >
+                            View student →
+                          </Link>
+                        )}
+                      </article>
+                    );
+                  })}
+
+                {activitiesError && !isLoading && (
                   <p className="px-4 py-10 text-center text-sm text-red-600">
                     Activity submissions are unavailable. Please try again.
                   </p>
@@ -759,30 +684,30 @@ export default function SchoolActivityMonitoringPage() {
                   )}
               </div>
 
-              {/* Footer */}
-              <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 sm:px-5">
+              <div className="flex flex-col gap-2 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <p className="text-xs text-slate-500">
                   Showing{" "}
                   <span className="font-medium text-slate-700">
-                    {activitiesError ? "—" : filteredActivities.length}
+                    {isLoading || activitiesError
+                      ? "—"
+                      : filteredActivities.length}
                   </span>{" "}
-                  of {activitiesError ? "—" : totalActivities} activity logs
+                  of {isLoading || activitiesError ? "—" : totalActivities}{" "}
+                  activity logs
                 </p>
 
                 <p className="text-xs text-slate-400">
-                  {studentsError || activitiesError
-                    ? "—"
-                    : `${studentsWithActivity} of ${students.length} students active`}
+                  {isLoading || studentsError
+                    ? "Student engagement counts unavailable"
+                    : `${activeStudents.length} active · ${atRiskStudents.length} at risk · ${inactiveStudents.length} inactive`}
                 </p>
               </div>
             </div>
           </section>
 
-          {/* Students needing attention */}
           {!isLoading &&
             !studentsError &&
-            !activitiesError &&
-            studentsWithoutActivity.length > 0 && (
+            studentsNeedingAttention.length > 0 && (
               <section className="mt-6 rounded-xl border border-amber-100 bg-amber-50/60 p-5">
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-600">
@@ -799,33 +724,48 @@ export default function SchoolActivityMonitoringPage() {
                     </svg>
                   </div>
 
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <h2 className="text-sm font-semibold text-[#10195c]">
                       Students needing attention
                     </h2>
 
                     <p className="mt-1 text-xs leading-5 text-slate-600">
-                      The following students currently have no activity logs in
-                      the available monitoring data.
+                      These students have an at-risk or inactive engagement
+                      status from the backend. Check their individual
+                      completion records before deciding whether follow-up is
+                      required.
                     </p>
 
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {studentsWithoutActivity.map((student) => (
-                        <Link
-                          key={student.id}
-                          href={`/school/students/${student.id}`}
-                          className="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-[#1729c7] transition hover:bg-[#f3f4ff]"
-                        >
-                          {student.name}
-                        </Link>
-                      ))}
+                      {studentsNeedingAttention.map((student) => {
+                        const isAtRisk =
+                          student.engagementStatus === "AT_RISK";
+
+                        return (
+                          <Link
+                            key={student.id}
+                            href={`/school/students/${encodeURIComponent(student.id)}`}
+                            className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-[#1729c7] transition hover:bg-[#f3f4ff]"
+                          >
+                            {student.name}
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] ${
+                                isAtRisk
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {isAtRisk ? "At risk" : "Inactive"}
+                            </span>
+                          </Link>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
               </section>
             )}
 
-          {/* Monitoring note */}
           <section className="mt-6 rounded-xl bg-[#e8e8ff] p-5">
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[#1729c7]">
@@ -850,8 +790,10 @@ export default function SchoolActivityMonitoringPage() {
                 <p className="mt-1 max-w-2xl text-xs leading-5 text-[#363d78]">
                   Activity monitoring helps the school identify students who
                   are submitting work regularly and those who may require
-                  follow-up. Review pending submissions and students without
-                  recent activity as part of routine SIWES monitoring.
+                  follow-up. Review pending submissions and engagement
+                  statuses as part of routine SIWES monitoring. Official
+                  completion hours are tracked separately through student
+                  completion records.
                 </p>
               </div>
             </div>

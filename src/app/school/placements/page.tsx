@@ -2,215 +2,136 @@
 "use client";
 
 import Link from "next/link";
-import SchoolNavigation from "@/components/shared/SchoolNavigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Student } from "@/types";
+import SchoolHeader from "@/components/shared/SchoolHeader";
+import SchoolNavigation from "@/components/shared/SchoolNavigation";
 import {
   fetchStudentsWithFallback,
   getSchoolApiErrorMessage,
+  type SchoolStudent,
 } from "@/services/schoolService";
 
+type PlacementFilter = "all" | "placed" | "unplaced";
+
+const isStudentPlaced = (student: SchoolStudent): boolean => {
+  if (student.placementStatus) {
+    return student.placementStatus.toUpperCase() === "PLACED";
+  }
+
+  return student.placementCompany.trim().length > 0;
+};
+
+const formatStatus = (status?: string): string => {
+  if (!status) return "Not provided";
+
+  return status
+    .toLowerCase()
+    .split(/[_\s-]+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+};
+
 export default function SchoolPlacementsPage() {
-  const [students, setStudents] = useState<Student[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<
-    "all" | "placed" | "unplaced"
-  >("all");
+  const [students, setStudents] = useState<SchoolStudent[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [placementFilter, setPlacementFilter] =
+    useState<PlacementFilter>("all");
   const [isLoading, setIsLoading] = useState(true);
-  const [studentsError, setStudentsError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadStudents = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
     try {
-      const liveStudents = await fetchStudentsWithFallback();
-
-      setStudents(liveStudents);
-      setStudentsError(null);
-    } catch (error) {
-      setStudentsError(getSchoolApiErrorMessage(error));
+      const result = await fetchStudentsWithFallback();
+      setStudents(result as SchoolStudent[]);
+    } catch (err) {
+      setError(getSchoolApiErrorMessage(err));
+      setStudents([]);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void loadData();
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [loadData]);
-
-  const handleRetry = () => {
-    setIsLoading(true);
-    void loadData();
-  };
-
-  const totalStudents = students.length;
+    void loadStudents();
+  }, [loadStudents]);
 
   const placedStudents = useMemo(
-    () => students.filter((s) => s.placementCompany.trim().length > 0),
+    () => students.filter(isStudentPlaced),
     [students],
   );
 
   const unplacedStudents = useMemo(
-    () => students.filter((s) => s.placementCompany.trim().length === 0),
+    () => students.filter((student) => !isStudentPlaced(student)),
     [students],
   );
 
   const placementCoverage =
-    totalStudents > 0
-      ? Math.round((placedStudents.length / totalStudents) * 100)
+    students.length > 0
+      ? Math.round((placedStudents.length / students.length) * 100)
       : 0;
 
   const filteredStudents = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const normalizedSearch = searchTerm.trim().toLowerCase();
 
     return students.filter((student) => {
-      const isPlaced = student.placementCompany.trim().length > 0;
+      const matchesSearch =
+        !normalizedSearch ||
+        student.name.toLowerCase().includes(normalizedSearch) ||
+        student.matricNumber.toLowerCase().includes(normalizedSearch) ||
+        student.university.toLowerCase().includes(normalizedSearch) ||
+        student.department.toLowerCase().includes(normalizedSearch) ||
+        student.placementCompany.toLowerCase().includes(normalizedSearch) ||
+        (student.placementTitle ?? "").toLowerCase().includes(normalizedSearch);
 
-      if (statusFilter === "placed" && !isPlaced) return false;
-      if (statusFilter === "unplaced" && isPlaced) return false;
+      const placed = isStudentPlaced(student);
 
-      if (!q) return true;
+      const matchesFilter =
+        placementFilter === "all" ||
+        (placementFilter === "placed" && placed) ||
+        (placementFilter === "unplaced" && !placed);
 
-      return (
-        student.name.toLowerCase().includes(q) ||
-        student.matricNumber.toLowerCase().includes(q) ||
-        student.university.toLowerCase().includes(q) ||
-        student.department.toLowerCase().includes(q) ||
-        student.placementCompany.toLowerCase().includes(q)
-      );
+      return matchesSearch && matchesFilter;
     });
-  }, [students, searchQuery, statusFilter]);
+  }, [students, searchTerm, placementFilter]);
+
+  const handleFilterChange = (filter: PlacementFilter) => {
+    setPlacementFilter(filter);
+  };
 
   return (
-    <div className="min-h-screen bg-[#f7f8fc] text-[#10195c]">
+    <div className="min-h-screen bg-gray-50">
       <SchoolNavigation />
 
-      <div className="lg:pl-56">
-        {/* Top bar */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
+      <div className="lg:pl-64">
+        <SchoolHeader />
+
+        <main className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
           <div>
-            <p className="text-sm font-bold text-slate-700">
-  Placement Management
-</p>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Notifications */}
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-[#10195c]"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                className="h-5 w-5"
-              >
-                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-                <path d="M10 21h4" />
-              </svg>
-            </button>
-
-            <div className="hidden h-8 w-px bg-slate-200 sm:block" />
-
-            {/* Coordinator */}
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#10195c] text-xs font-semibold text-white">
-                SC
-              </div>
-
-              <div className="hidden sm:block">
-                <p className="text-sm font-semibold text-[#10195c]">
-                  School Coordinator
-                </p>
-
-                <p className="text-xs text-slate-500">
-                  SIWES Coordinator
-                </p>
-              </div>
-
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="hidden h-4 w-4 text-slate-500 sm:block"
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </div>
-          </div>
-        </header>
-
-        <main className="mx-auto max-w-7xl px-5 py-7 sm:px-8">
-          {/* Page heading */}
-          <section className="mb-7">
-            <p className="text-sm font-medium text-[#1729c7]">
-              Placement Management
+            <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+              Placement Monitoring
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Monitor student placement assignments and their approval status.
             </p>
+          </div>
 
-            <div className="mt-1 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-[#10195c] sm:text-3xl">
-                  Placements
-                </h1>
-
-                <p className="mt-2 max-w-2xl text-sm text-slate-500">
-                  Monitor student placement status and host company
-                  information across your SIWES programme.
-                </p>
-              </div>
-
-              <Link
-                href="/school/students"
-                className="inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-[#7b83e8] hover:text-[#1729c7]"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  className="h-4 w-4"
-                >
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-
-                View students
-              </Link>
-            </div>
-          </section>
-
-          {/* API error and retry */}
-          {studentsError && (
-            <div
-              role="alert"
-              className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                 <div>
-                  <p className="text-sm font-semibold text-red-800">
-                    Student placement information could not be loaded.
+                  <p className="font-medium text-red-800">
+                    Unable to load placement information
                   </p>
-
-                  <p className="mt-1 text-xs text-red-700">
-                    {studentsError}
-                  </p>
+                  <p className="mt-1 text-sm text-red-700">{error}</p>
                 </div>
 
                 <button
-                  type="button"
-                  onClick={handleRetry}
+                  onClick={() => void loadStudents()}
                   disabled={isLoading}
-                  className="shrink-0 rounded-lg bg-red-700 px-4 py-2 text-xs font-medium text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800 disabled:opacity-50"
                 >
                   {isLoading ? "Retrying..." : "Try again"}
                 </button>
@@ -218,545 +139,368 @@ export default function SchoolPlacementsPage() {
             </div>
           )}
 
-          {/* Placement summary */}
-          <section
-            className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
-            aria-label="Placement summary"
-          >
-            <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-slate-500">
-                  Total Students
-                </p>
-
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eef0ff] text-[#1729c7]">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="h-4 w-4"
-                  >
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                </div>
-              </div>
-
-              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {isLoading ? "..." : studentsError ? "—" : totalStudents}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-sm font-medium text-gray-500">
+                Total Students
               </p>
-
-              <p className="mt-1 text-xs text-slate-400">
-                Students in programme
+              <p className="mt-2 text-3xl font-bold text-gray-900">
+                {isLoading ? "—" : error ? "—" : students.length}
               </p>
-            </article>
-
-            <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-slate-500">
-                  Placed
-                </p>
-
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-50 text-green-600">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="h-4 w-4"
-                  >
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
-                </div>
-              </div>
-
-              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {isLoading ? "..." : studentsError ? "—" : placedStudents.length}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-400">
-                Students with placements
-              </p>
-            </article>
-
-            <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-slate-500">
-                  Unplaced
-                </p>
-
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-50 text-amber-600">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="h-4 w-4"
-                  >
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M12 8v4" />
-                    <path d="M12 16h.01" />
-                  </svg>
-                </div>
-              </div>
-
-              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {isLoading ? "..." : studentsError ? "—" : unplacedStudents.length}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-400">
-                Students needing placement
-              </p>
-            </article>
-
-            <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-slate-500">
-                  Coverage
-                </p>
-
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eef0ff] text-[#1729c7]">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="h-4 w-4"
-                  >
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M8 12.5 10.5 15 16 9.5" />
-                  </svg>
-                </div>
-              </div>
-
-              <p className="mt-3 text-2xl font-semibold text-[#10195c]">
-                {isLoading ? "..." : studentsError ? "—" : `${placementCoverage}%`}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-400">
-                {studentsError
-                  ? "Placement coverage unavailable"
-                  : "Placement coverage"}
-              </p>
-            </article>
-          </section>
-
-          {/* Placement monitoring */}
-          <section className="mt-6" aria-labelledby="placement-monitoring">
-            <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-              <div>
-                <h2
-                  id="placement-monitoring"
-                  className="text-base font-semibold text-[#10195c]"
-                >
-                  Placement Monitoring
-                </h2>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Review student placement assignments and identify students
-                  who still need placement.
-                </p>
-              </div>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              {/* Search and filters */}
-              <div className="flex flex-col gap-4 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="relative w-full lg:max-w-sm">
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-sm font-medium text-gray-500">
+                Placed Students
+              </p>
+              <p className="mt-2 text-3xl font-bold text-green-600">
+                {isLoading || error ? "—" : placedStudents.length}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-sm font-medium text-gray-500">
+                Unplaced Students
+              </p>
+              <p className="mt-2 text-3xl font-bold text-orange-600">
+                {isLoading || error ? "—" : unplacedStudents.length}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-sm font-medium text-gray-500">
+                Placement Coverage
+              </p>
+              <p className="mt-2 text-3xl font-bold text-blue-600">
+                {isLoading || error ? "—" : `${placementCoverage}%`}
+              </p>
+            </div>
+          </div>
+
+          {!isLoading && !error && unplacedStudents.length > 0 && (
+            <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-orange-100 p-2">
                   <svg
-                    viewBox="0 0 24 24"
+                    className="h-5 w-5 text-orange-600"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                    viewBox="0 0 24 24"
                   >
-                    <circle cx="11" cy="11" r="7" />
-                    <path d="m20 20-4-4" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v4m0 4h.01M10.29 3.86l-8.1 14.02A2 2 0 003.92 21h16.16a2 2 0 001.73-3.12l-8.1-14.02a2 2 0 00-3.46 0z"
+                    />
                   </svg>
-
-                  <input
-                    type="text"
-                    placeholder="Search students or companies..."
-                    aria-label="Search placements"
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    className="h-10 w-full rounded-lg border border-slate-200 bg-[#f8f9fc] pl-9 pr-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#7b83e8] focus:bg-white focus:ring-2 focus:ring-[#eef0ff]"
-                  />
                 </div>
 
-                <div
-                  className="flex flex-wrap items-center gap-2"
-                  aria-label="Filter by placement status"
-                >
-                  {(
-                    [
-                      { value: "all", label: "All students" },
-                      { value: "placed", label: "Placed" },
-                      { value: "unplaced", label: "Unplaced" },
-                    ] as const
-                  ).map((filter) => (
-                    <button
-                      key={filter.value}
-                      type="button"
-                      onClick={() => setStatusFilter(filter.value)}
-                      aria-pressed={statusFilter === filter.value}
-                      className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
-                        statusFilter === filter.value
-                          ? "bg-[#10195c] text-white"
-                          : "border border-slate-200 bg-white text-slate-600 hover:border-[#7b83e8] hover:text-[#1729c7]"
-                      }`}
-                    >
-                      {filter.label}
-                    </button>
-                  ))}
+                <div>
+                  <h3 className="font-semibold text-orange-900">
+                    Students Without Placement
+                  </h3>
+                  <p className="mt-1 text-sm text-orange-800">
+                    {unplacedStudents.length} student
+                    {unplacedStudents.length === 1 ? " has" : "s have"} no
+                    recorded placement assignment. Review their records and
+                    follow up where necessary.
+                  </p>
                 </div>
-              </div>
-
-              {/* Desktop table */}
-              <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[800px] text-left">
-                  <thead className="border-b border-slate-200 bg-[#fafbfe]">
-                    <tr>
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Student
-                      </th>
-
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Matric Number
-                      </th>
-
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        University
-                      </th>
-
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Department
-                      </th>
-
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Company
-                      </th>
-
-                      <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredStudents.map((student) => {
-                      const isPlaced =
-                        student.placementCompany.trim().length > 0;
-
-                      const initials = student.name
-                        .split(" ")
-                        .map((name) => name[0])
-                        .slice(0, 2)
-                        .join("");
-
-                      return (
-                        <tr
-                          key={student.id}
-                          className="transition hover:bg-slate-50"
-                        >
-                          <td className="px-5 py-4">
-                            <Link
-                              href={`/school/students/${student.id}`}
-                              className="group flex items-center gap-3"
-                            >
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eef0ff] text-xs font-semibold text-[#1729c7]">
-                                {initials}
-                              </div>
-
-                              <div>
-                                <p className="text-sm font-semibold text-[#10195c] group-hover:text-[#1729c7]">
-                                  {student.name}
-                                </p>
-
-                                <p className="text-xs text-slate-400">
-                                  {student.id}
-                                </p>
-                              </div>
-                            </Link>
-                          </td>
-
-                          <td className="px-5 py-4 text-sm text-slate-600">
-                            {student.matricNumber}
-                          </td>
-
-                          <td className="max-w-[220px] px-5 py-4">
-                            <p className="truncate text-sm text-slate-600">
-                              {student.university}
-                            </p>
-                          </td>
-
-                          <td className="px-5 py-4 text-sm text-slate-600">
-                            {student.department}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            {isPlaced ? (
-                              <p className="text-sm font-medium text-slate-700">
-                                {student.placementCompany}
-                              </p>
-                            ) : (
-                              <p className="text-sm text-slate-400">
-                                No company assigned
-                              </p>
-                            )}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span
-                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ${
-                                isPlaced
-                                  ? "bg-green-50 text-green-700"
-                                  : "bg-amber-50 text-amber-700"
-                              }`}
-                            >
-                              <span
-                                className={`h-1.5 w-1.5 rounded-full ${
-                                  isPlaced
-                                    ? "bg-green-500"
-                                    : "bg-amber-500"
-                                }`}
-                              />
-
-                              {isPlaced ? "Placed" : "Not placed"}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                    {isLoading && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-5 py-12 text-center text-sm text-slate-500"
-                        >
-                          Loading placement information...
-                        </td>
-                      </tr>
-                    )}
-
-                    {!isLoading &&
-                      !studentsError &&
-                      filteredStudents.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            className="px-5 py-12 text-center text-sm text-slate-500"
-                          >
-                            No students match your search or selected filter.
-                          </td>
-                        </tr>
-                      )}
-
-                    {studentsError && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-5 py-12 text-center text-sm text-red-600"
-                        >
-                          Placement information is unavailable. Use the retry
-                          button above to try again.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile cards */}
-              <div className="divide-y divide-slate-100 md:hidden">
-                {filteredStudents.map((student) => {
-                  const isPlaced =
-                    student.placementCompany.trim().length > 0;
-
-                  const initials = student.name
-                    .split(" ")
-                    .map((name) => name[0])
-                    .slice(0, 2)
-                    .join("");
-
-                  return (
-                    <Link
-                      key={student.id}
-                      href={`/school/students/${student.id}`}
-                      className="block p-4 transition hover:bg-slate-50"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef0ff] text-sm font-semibold text-[#1729c7]">
-                            {initials}
-                          </div>
-
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-[#10195c]">
-                              {student.name}
-                            </p>
-
-                            <p className="mt-0.5 text-xs text-slate-400">
-                              {student.matricNumber}
-                            </p>
-                          </div>
-                        </div>
-
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          className="mt-1 h-4 w-4 shrink-0 text-slate-300"
-                        >
-                          <path d="m9 18 6-6-6-6" />
-                        </svg>
-                      </div>
-
-                      <div className="mt-4 space-y-3">
-                        <div>
-                          <p className="text-[11px] text-slate-400">
-                            University
-                          </p>
-
-                          <p className="mt-1 text-xs font-medium text-slate-600">
-                            {student.university}
-                          </p>
-                        </div>
-
-                        <div>
-                          <p className="text-[11px] text-slate-400">
-                            Department
-                          </p>
-
-                          <p className="mt-1 text-xs font-medium text-slate-600">
-                            {student.department}
-                          </p>
-                        </div>
-
-                        <div className="border-t border-slate-100 pt-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-[11px] text-slate-400">
-                                Placement Company
-                              </p>
-
-                              <p className="mt-1 truncate text-xs font-medium text-slate-700">
-                                {student.placementCompany ||
-                                  "No company assigned"}
-                              </p>
-                            </div>
-
-                            <span
-                              className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-medium ${
-                                isPlaced
-                                  ? "bg-green-50 text-green-700"
-                                  : "bg-amber-50 text-amber-700"
-                              }`}
-                            >
-                              {isPlaced ? "Placed" : "Not placed"}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })}
-
-                {isLoading && (
-                  <p className="px-4 py-10 text-center text-sm text-slate-500">
-                    Loading placement information...
-                  </p>
-                )}
-
-                {!isLoading &&
-                  !studentsError &&
-                  filteredStudents.length === 0 && (
-                    <p className="px-4 py-10 text-center text-sm text-slate-500">
-                      No students match your search or selected filter.
-                    </p>
-                  )}
-
-                {studentsError && (
-                  <p className="px-4 py-10 text-center text-sm text-red-600">
-                    Placement information is unavailable. Use the retry button
-                    above to try again.
-                  </p>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 sm:px-5">
-                <p className="text-xs text-slate-500">
-                  Showing{" "}
-                  <span className="font-medium text-slate-700">
-                    {studentsError ? "—" : filteredStudents.length}
-                  </span>{" "}
-                  of{" "}
-                  <span className="font-medium text-slate-700">
-                    {studentsError ? "—" : totalStudents}
-                  </span>{" "}
-                  students
-                </p>
-
-                <Link
-                  href="/school/students"
-                  className="text-xs font-medium text-[#1729c7] hover:underline"
-                >
-                  View all students
-                </Link>
               </div>
             </div>
-          </section>
+          )}
 
-          {/* Unplaced students */}
-          {!isLoading &&
-            !studentsError &&
-            unplacedStudents.length > 0 && (
-              <section className="mt-6 rounded-xl border border-amber-100 bg-amber-50/60 p-5">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-600">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-200 p-4 sm:p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Student Placements
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500">
+                    View student placement assignments and approval details.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <div className="relative">
                     <svg
-                      viewBox="0 0 24 24"
+                      className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
                       fill="none"
                       stroke="currentColor"
-                      strokeWidth="1.8"
-                      className="h-5 w-5"
+                      viewBox="0 0 24 24"
                     >
-                      <path d="M12 3 2.5 20h19L12 3Z" />
-                      <path d="M12 9v5" />
-                      <path d="M12 17h.01" />
+                      <circle cx="11" cy="11" r="7" strokeWidth="2" />
+                      <path
+                        strokeLinecap="round"
+                        strokeWidth="2"
+                        d="m20 20-4-4"
+                      />
                     </svg>
+
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder="Search students or companies..."
+                      className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-64"
+                    />
                   </div>
 
-                  <div>
-                    <h2 className="text-sm font-semibold text-[#10195c]">
-                      Placement attention needed
-                    </h2>
-
-                    <p className="mt-1 text-xs leading-5 text-slate-600">
-                      {unplacedStudents.length}{" "}
-                      {unplacedStudents.length === 1
-                        ? "student currently has"
-                        : "students currently have"}{" "}
-                      no placement company assigned. Review the student list to
-                      monitor their placement status.
-                    </p>
-
-                    <Link
-                      href="/school/students"
-                      className="mt-3 inline-flex text-xs font-semibold text-[#1729c7] hover:underline"
-                    >
-                      Review students →
-                    </Link>
-                  </div>
+                  <select
+                    value={placementFilter}
+                    onChange={(event) =>
+                      handleFilterChange(event.target.value as PlacementFilter)
+                    }
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="all">All Students</option>
+                    <option value="placed">Placed</option>
+                    <option value="unplaced">Unplaced</option>
+                  </select>
                 </div>
-              </section>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 border-b border-gray-200 px-4 py-3 sm:px-5">
+              {(
+                [
+                  ["all", "All Students"],
+                  ["placed", "Placed"],
+                  ["unplaced", "Unplaced"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => handleFilterChange(value)}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    placementFilter === value
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+                <p className="mt-3 text-sm text-gray-500">
+                  Loading placement information...
+                </p>
+              </div>
+            ) : error ? (
+              <div className="py-16 text-center">
+                <p className="font-medium text-gray-700">
+                  Placement information could not be loaded.
+                </p>
+                <button
+                  onClick={() => void loadStudents()}
+                  className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-800"
+                >
+                  Retry loading
+                </button>
+              </div>
+            ) : filteredStudents.length === 0 ? (
+              <div className="py-16 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+                  <svg
+                    className="h-6 w-6 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h6l6 6v10a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                </div>
+
+                <p className="mt-3 font-medium text-gray-700">
+                  {students.length === 0
+                    ? "No students found"
+                    : "No matching students"}
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  {students.length === 0
+                    ? "Student placement records will appear here when available."
+                    : "Try adjusting your search or placement filter."}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                      <tr>
+                        <th className="px-5 py-4 font-semibold">Student</th>
+                        <th className="px-5 py-4 font-semibold">
+                          Matric Number
+                        </th>
+                        <th className="px-5 py-4 font-semibold">Department</th>
+                        <th className="px-5 py-4 font-semibold">Company</th>
+                        <th className="px-5 py-4 font-semibold">
+                          Assignment Status
+                        </th>
+                        <th className="px-5 py-4 font-semibold">
+                          Approval Status
+                        </th>
+                        <th className="px-5 py-4 font-semibold">Action</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredStudents.map((student) => {
+                        const placed = isStudentPlaced(student);
+
+                        return (
+                          <tr
+                            key={student.id}
+                            className="transition hover:bg-gray-50"
+                          >
+                            <td className="px-5 py-4">
+                              <p className="font-medium text-gray-900">
+                                {student.name}
+                              </p>
+                              <p className="mt-1 text-xs text-gray-500">
+                                {student.university}
+                              </p>
+                            </td>
+
+                            <td className="px-5 py-4 text-gray-600">
+                              {student.matricNumber || "—"}
+                            </td>
+
+                            <td className="px-5 py-4 text-gray-600">
+                              {student.department || "—"}
+                            </td>
+
+                            <td className="px-5 py-4">
+                              <p className="font-medium text-gray-700">
+                                {student.placementCompany || "Not assigned"}
+                              </p>
+                              {student.placementTitle && (
+                                <p className="mt-1 text-xs text-gray-500">
+                                  {student.placementTitle}
+                                </p>
+                              )}
+                            </td>
+
+                            <td className="px-5 py-4">
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                                  placed
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-orange-100 text-orange-700"
+                                }`}
+                              >
+                                {placed ? "Placed" : "Unplaced"}
+                              </span>
+                            </td>
+
+                            <td className="px-5 py-4 text-gray-600">
+                              {formatStatus(student.placementApprovalStatus)}
+                            </td>
+
+                            <td className="px-5 py-4">
+                              <Link
+                                href={`/school/students/${encodeURIComponent(student.id)}`}
+                                className="font-medium text-blue-600 hover:text-blue-800"
+                              >
+                                View student →
+                              </Link>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="divide-y divide-gray-100 md:hidden">
+                  {filteredStudents.map((student) => {
+                    const placed = isStudentPlaced(student);
+
+                    return (
+                      <div key={student.id} className="space-y-3 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-900">
+                              {student.name}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
+                              {student.matricNumber || "—"}
+                            </p>
+                          </div>
+
+                          <span
+                            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
+                              placed
+                                ? "bg-green-100 text-green-700"
+                                : "bg-orange-100 text-orange-700"
+                            }`}
+                          >
+                            {placed ? "Placed" : "Unplaced"}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <p className="text-xs text-gray-500">Department</p>
+                            <p className="mt-1 text-gray-700">
+                              {student.department || "—"}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-xs text-gray-500">Company</p>
+                            <p className="mt-1 text-gray-700">
+                              {student.placementCompany || "Not assigned"}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-xs text-gray-500">
+                              Approval Status
+                            </p>
+                            <p className="mt-1 text-gray-700">
+                              {formatStatus(student.placementApprovalStatus)}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-xs text-gray-500">Institution</p>
+                            <p className="mt-1 text-gray-700">
+                              {student.university || "—"}
+                            </p>
+                          </div>
+                        </div>
+
+                        <Link
+                          href={`/school/students/${encodeURIComponent(student.id)}`}
+                          className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800"
+                        >
+                          View student →
+                        </Link>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
+
+            {!isLoading && !error && filteredStudents.length > 0 && (
+              <div className="border-t border-gray-200 px-4 py-3 text-sm text-gray-500 sm:px-5">
+                Showing {filteredStudents.length} of {students.length} students
+              </div>
+            )}
+          </div>
         </main>
       </div>
     </div>

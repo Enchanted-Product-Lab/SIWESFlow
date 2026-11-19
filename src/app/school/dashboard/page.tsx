@@ -1,26 +1,31 @@
+
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
-import { Student, ActivityLog } from "@/types";
+import SchoolHeader from "@/components/shared/SchoolHeader";
+import { Student } from "@/types";
 import {
   fetchStudentsWithFallback,
-  fetchActivitiesWithFallback,
+  fetchSchoolDashboardMetrics,
   getSchoolApiErrorMessage,
+  type SchoolDashboardMetrics,
 } from "@/services/schoolService";
 
 export default function SchoolDashboardPage() {
   const [students, setStudents] = useState<Student[]>([]);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [metrics, setMetrics] = useState<SchoolDashboardMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [studentsError, setStudentsError] = useState<string | null>(null);
-  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
-    const [studentsResult, activitiesResult] = await Promise.allSettled([
+    setIsLoading(true);
+
+    const [studentsResult, metricsResult] = await Promise.allSettled([
       fetchStudentsWithFallback(),
-      fetchActivitiesWithFallback(),
+      fetchSchoolDashboardMetrics(),
     ]);
 
     if (studentsResult.status === "fulfilled") {
@@ -32,12 +37,12 @@ export default function SchoolDashboardPage() {
       );
     }
 
-    if (activitiesResult.status === "fulfilled") {
-      setActivityLogs(activitiesResult.value);
-      setActivitiesError(null);
+    if (metricsResult.status === "fulfilled") {
+      setMetrics(metricsResult.value);
+      setMetricsError(null);
     } else {
-      setActivitiesError(
-        getSchoolApiErrorMessage(activitiesResult.reason),
+      setMetricsError(
+        getSchoolApiErrorMessage(metricsResult.reason),
       );
     }
 
@@ -45,41 +50,54 @@ export default function SchoolDashboardPage() {
   }, []);
 
   useEffect(() => {
-  const timeoutId = window.setTimeout(() => {
-    void loadData();
-  }, 0);
+    const timeoutId = window.setTimeout(() => {
+      void loadData();
+    }, 0);
 
-  return () => {
-    window.clearTimeout(timeoutId);
-  };
-}, [loadData]);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [loadData]);
 
   const handleRetry = () => {
-    setIsLoading(true);
     void loadData();
   };
 
-  const totalStudents = students.length;
+  // Use backend aggregated metrics where available.
+  // Fall back to student-list calculations for metrics that can
+  // safely be calculated from the available student records.
+  const totalStudents = metrics?.totalStudents ?? students.length;
 
-  const placedStudents = students.filter(
-    (student) => student.placementCompany.trim().length > 0,
-  ).length;
+  const placedStudents =
+    metrics?.placedStudents ??
+    students.filter(
+      (student) => student.placementCompany.trim().length > 0,
+    ).length;
 
-  const unplacedStudents = totalStudents - placedStudents;
+  const unplacedStudents =
+    metrics?.unplacedStudents ?? totalStudents - placedStudents;
 
-  const activeStudentIds = new Set(
-    activityLogs.map((activityLog) => activityLog.studentId),
-  );
+  const activeStudents =
+    metrics?.activeStudents ??
+    students.filter(
+      (student) => student.engagementStatus === "ACTIVE",
+    ).length;
 
-  const activeStudents = students.filter((student) =>
-    activeStudentIds.has(student.id),
-  ).length;
+  const atRiskStudents =
+    metrics?.atRiskStudents ??
+    students.filter(
+      (student) => student.engagementStatus === "AT_RISK",
+    ).length;
 
-  const atRiskStudents = 0;
-  const completedStudents = 0;
+  // Official SIWES completion comes from the backend aggregated
+  // metrics endpoint, not placementStatus.
+  const completedStudents = metrics?.completedStudents ?? null;
 
   const placementCoverage =
-    totalStudents > 0 ? Math.round((placedStudents / totalStudents) * 100) : 0;
+    metrics?.placementCoverage ??
+    (totalStudents > 0
+      ? Math.round((placedStudents / totalStudents) * 100)
+      : 0);
 
   const dashboardMetrics = [
     {
@@ -142,7 +160,7 @@ export default function SchoolDashboardPage() {
     {
       label: "Active Students",
       value: activeStudents,
-      description: "Students with activity",
+      description: "Students marked active by SIWES monitoring",
       href: "/school/activity-monitoring",
       icon: (
         <svg
@@ -159,7 +177,7 @@ export default function SchoolDashboardPage() {
     {
       label: "At-Risk Students",
       value: atRiskStudents,
-      description: "Requires attention",
+      description: "Students flagged for low engagement",
       href: "/school/activity-monitoring",
       icon: (
         <svg
@@ -178,7 +196,7 @@ export default function SchoolDashboardPage() {
     {
       label: "Completed Students",
       value: completedStudents,
-      description: "Verified completions",
+      description: "Students who completed SIWES",
       href: "/school/students",
       icon: (
         <svg
@@ -194,78 +212,23 @@ export default function SchoolDashboardPage() {
     },
   ];
 
+  const dashboardError = studentsError || metricsError;
+  const metricsUnavailable = Boolean(metricsError && studentsError);
+
   return (
     <div className="min-h-screen bg-[#f7f8fc] text-[#10195c]">
       <SchoolNavigation />
 
       <div className="lg:pl-56">
-        {/* Top bar */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
-          <div>
-
-          </div>
-
-          <div className="flex items-center gap-4">
-            {isLoading && (
-              <span className="text-xs text-slate-400 animate-pulse">Syncing...</span>
-            )}
-            {/* Notifications */}
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-[#10195c]"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                className="h-5 w-5"
-              >
-                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-                <path d="M10 21h4" />
-              </svg>
-            </button>
-
-            <div className="hidden h-8 w-px bg-slate-200 sm:block" />
-
-            {/* Coordinator */}
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#10195c] text-xs font-semibold text-white">
-                SC
-              </div>
-
-              <div className="hidden sm:block">
-                <p className="text-sm font-semibold text-[#10195c]">
-                  School Coordinator
-                </p>
-
-                <p className="text-xs text-slate-500">
-                  SIWES Coordinator
-                </p>
-              </div>
-
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="hidden h-4 w-4 text-slate-500 sm:block"
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </div>
-          </div>
-        </header>
+        <SchoolHeader isLoading={isLoading} />
 
         <main className="mx-auto max-w-7xl px-5 py-7 sm:px-8">
-          {/* Welcome section */}
           <section className="mb-7">
             <p className="text-sm font-medium text-[#1729c7]">
               SIWES Monitoring
             </p>
 
-           <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#10195c] sm:text-3xl">
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#10195c] sm:text-3xl">
               Good morning, Coordinator
             </h1>
 
@@ -275,26 +238,26 @@ export default function SchoolDashboardPage() {
             </p>
           </section>
 
-                      {(studentsError || activitiesError) && (
+          {dashboardError && (
             <div
               role="alert"
-              className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4"
+              className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4"
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-red-800">
+                  <p className="text-sm font-semibold text-amber-800">
                     Some dashboard information could not be loaded.
                   </p>
 
                   {studentsError && (
-                    <p className="mt-1 text-xs text-red-700">
+                    <p className="mt-1 text-xs text-amber-700">
                       Students: {studentsError}
                     </p>
                   )}
 
-                  {activitiesError && (
-                    <p className="mt-1 text-xs text-red-700">
-                      Activities: {activitiesError}
+                  {metricsError && (
+                    <p className="mt-1 text-xs text-amber-700">
+                      Dashboard metrics: {metricsError}
                     </p>
                   )}
                 </div>
@@ -303,7 +266,7 @@ export default function SchoolDashboardPage() {
                   type="button"
                   onClick={handleRetry}
                   disabled={isLoading}
-                  className="shrink-0 rounded-lg bg-red-700 px-4 py-2 text-xs font-medium text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="shrink-0 rounded-lg bg-amber-700 px-4 py-2 text-xs font-medium text-white transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isLoading ? "Retrying..." : "Try again"}
                 </button>
@@ -311,11 +274,8 @@ export default function SchoolDashboardPage() {
             </div>
           )}
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_250px]"></div>
-
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_250px]">
             <div>
-              {/* Student metrics */}
               <section aria-labelledby="student-overview-heading">
                 <div className="mb-3 flex items-center justify-between">
                   <h2
@@ -357,7 +317,13 @@ export default function SchoolDashboardPage() {
                       </div>
 
                       <p className="mt-4 text-2xl font-semibold text-[#10195c]">
-                        {metric.value}
+                        {isLoading ||
+                        metricsUnavailable ||
+                        metric.value === null ||
+                        (metricsError &&
+                          metric.label === "Completed Students")
+                          ? "—"
+                          : metric.value.toLocaleString()}
                       </p>
 
                       <p className="mt-1 text-sm font-medium text-[#10195c]">
@@ -372,11 +338,7 @@ export default function SchoolDashboardPage() {
                 </div>
               </section>
 
-              {/* Students */}
-              <section
-                className="mt-6"
-                aria-labelledby="students-heading"
-              >
+              <section className="mt-6" aria-labelledby="students-heading">
                 <div className="mb-3 flex items-center justify-between">
                   <div>
                     <h2
@@ -400,7 +362,7 @@ export default function SchoolDashboardPage() {
                 </div>
 
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                                    <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-slate-100">
                     {studentsError ? (
                       <p className="px-4 py-8 text-center text-sm text-red-600">
                         Student information is unavailable.
@@ -415,62 +377,73 @@ export default function SchoolDashboardPage() {
                       </p>
                     ) : (
                       students.slice(0, 3).map((student) => {
-                      const hasActivity = activeStudentIds.has(student.id);
+                        // Placement status is not official SIWES completion.
+                        const engagementLabel =
+                          student.engagementStatus === "ACTIVE"
+                            ? "Active"
+                            : student.engagementStatus === "AT_RISK"
+                              ? "At risk"
+                              : student.engagementStatus === "INACTIVE"
+                                ? "Inactive"
+                                : "Status unavailable";
 
-                      return (
-                        <Link
-                          key={student.id}
-                          href={`/school/students/${student.id}`}
-                          className="flex items-center justify-between gap-4 px-4 py-4 transition hover:bg-slate-50"
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef0ff] text-sm font-semibold text-[#1729c7]">
-                              {student.name
-                                .split(" ")
-                                .map((name) => name[0])
-                                .slice(0, 2)
-                                .join("")}
+                        const engagementClass =
+                          student.engagementStatus === "ACTIVE"
+                            ? "bg-green-50 text-green-700"
+                            : student.engagementStatus === "AT_RISK"
+                              ? "bg-amber-50 text-amber-700"
+                              : student.engagementStatus === "INACTIVE"
+                                ? "bg-red-50 text-red-700"
+                                : "bg-slate-100 text-slate-500";
+
+                        return (
+                          <Link
+                            key={student.id}
+                            href={`/school/students/${student.id}`}
+                            className="flex items-center justify-between gap-4 px-4 py-4 transition hover:bg-slate-50"
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef0ff] text-sm font-semibold text-[#1729c7]">
+                                {student.name
+                                  .split(" ")
+                                  .map((name) => name[0])
+                                  .slice(0, 2)
+                                  .join("")}
+                              </div>
+
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-[#10195c]">
+                                  {student.name}
+                                </p>
+
+                                <p className="truncate text-xs text-slate-500">
+                                  {student.department} · {student.level}
+                                </p>
+                              </div>
                             </div>
 
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-[#10195c]">
-                                {student.name}
+                            <div className="hidden text-right sm:block">
+                              <p className="text-xs font-medium text-slate-700">
+                                {student.placementCompany ||
+                                  "No placement yet"}
                               </p>
 
-                              <p className="truncate text-xs text-slate-500">
-                                {student.department} · {student.level}
-                              </p>
+                              <span
+                                className={`mt-1 inline-flex rounded-full px-2 py-1 text-[10px] font-medium ${engagementClass}`}
+                              >
+                                {engagementLabel}
+                              </span>
                             </div>
-                          </div>
-
-                          <div className="hidden text-right sm:block">
-                            <p className="text-xs font-medium text-slate-700">
-                              {student.placementCompany ||
-                                "No placement yet"}
-                            </p>
-
-                            <span
-                              className={`mt-1 inline-flex rounded-full px-2 py-1 text-[10px] font-medium ${
-                                hasActivity
-                                  ? "bg-green-50 text-green-700"
-                                  : "bg-slate-100 text-slate-500"
-                              }`}
-                            >
-                              {hasActivity ? "Active" : "No activity"}
-                            </span>
-                          </div>
-                        </Link>
-                      );
-                    })
-                  )}
+                          </Link>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </section>
             </div>
 
-            {/* Right column */}
             <aside className="space-y-4">
-              {/* Placement coverage */}
               <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold text-[#10195c]">
@@ -478,7 +451,9 @@ export default function SchoolDashboardPage() {
                   </h2>
 
                   <span className="text-xs font-medium text-[#1729c7]">
-                    {studentsError ? "—" : `${placementCoverage}%`}
+                    {isLoading || metricsUnavailable
+                      ? "—"
+                      : `${placementCoverage}%`}
                   </span>
                 </div>
 
@@ -486,12 +461,14 @@ export default function SchoolDashboardPage() {
                   <div
                     className="relative flex h-32 w-32 items-center justify-center rounded-full"
                     style={{
-                      background: `conic-gradient(#1729c7 ${studentsError ? "—" : `${placementCoverage}%`}, #e8eaff ${studentsError ? "—" : `${placementCoverage}%`} 100%)`,
+                      background: `conic-gradient(#1729c7 ${placementCoverage}%, #e8eaff ${placementCoverage}% 100%)`,
                     }}
                   >
                     <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-white">
                       <span className="text-xl font-semibold text-[#10195c]">
-                        {studentsError ? "—" : `${placementCoverage}%`}
+                        {isLoading || metricsUnavailable
+                          ? "—"
+                          : `${placementCoverage}%`}
                       </span>
 
                       <span className="text-[10px] text-slate-500">
@@ -502,9 +479,11 @@ export default function SchoolDashboardPage() {
                 </div>
 
                 <p className="mt-4 text-center text-xs leading-5 text-slate-500">
-                  {studentsError
-  ? "Placement information is currently unavailable."
-  : `${placedStudents} of ${totalStudents} students currently have placements.`}
+                  {metricsUnavailable
+                    ? "Placement information is currently unavailable."
+                    : isLoading
+                      ? "Loading placement information..."
+                      : `${placedStudents} of ${totalStudents} students currently have placements.`}
                 </p>
 
                 <Link
@@ -515,7 +494,6 @@ export default function SchoolDashboardPage() {
                 </Link>
               </section>
 
-              {/* Monitoring card */}
               <section className="rounded-xl bg-[#e8e8ff] p-5 shadow-sm">
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#1729c7]">
                   <svg

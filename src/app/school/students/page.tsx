@@ -1,9 +1,10 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import SchoolNavigation from "@/components/shared/SchoolNavigation";
+import SchoolHeader from "@/components/shared/SchoolHeader";
 import { Student, ActivityLog } from "@/types";
 import {
   fetchStudentsWithFallback,
@@ -15,7 +16,7 @@ type PlacementFilter = "all" | "placed" | "unplaced";
 type ActivityFilter = "all" | "active" | "no-activity";
 
 const selectClassName =
-  "w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100";
+  "w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400";
 
 const inputClassName =
   "w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-orange-400 focus:ring-2 focus:ring-orange-100";
@@ -57,6 +58,31 @@ function FilterField({
   );
 }
 
+/**
+ * Prefer the backend placement status when it is available.
+ * Fall back to the company name only when placementStatus is absent.
+ */
+function isStudentPlaced(student: Student): boolean {
+  const status = student.placementStatus?.trim().toUpperCase();
+
+  if (status) {
+    return status === "PLACED";
+  }
+
+  return student.placementCompany.trim().length > 0;
+}
+
+function getStudentInitials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 export default function SchoolStudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
@@ -64,28 +90,47 @@ export default function SchoolStudentsPage() {
   const [studentsError, setStudentsError] = useState<string | null>(null);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
 
+  const loadRequestId = useRef(0);
+
+  const [search, setSearch] = useState("");
+  const [department, setDepartment] = useState("all");
+  const [level, setLevel] = useState("all");
+  const [company, setCompany] = useState("all");
+  const [placementStatus, setPlacementStatus] =
+    useState<PlacementFilter>("all");
+  const [activityStatus, setActivityStatus] =
+    useState<ActivityFilter>("all");
+
   const loadData = useCallback(async () => {
+    const requestId = ++loadRequestId.current;
+
+    setIsLoading(true);
+
     const [studentsResult, activitiesResult] = await Promise.allSettled([
       fetchStudentsWithFallback(),
       fetchActivitiesWithFallback(),
     ]);
 
+    // Ignore responses from older requests, such as an earlier retry.
+    if (requestId !== loadRequestId.current) {
+      return;
+    }
+
     if (studentsResult.status === "fulfilled") {
       setStudents(studentsResult.value);
       setStudentsError(null);
     } else {
-      setStudentsError(
-        getSchoolApiErrorMessage(studentsResult.reason),
-      );
+      setStudents([]);
+      setStudentsError(getSchoolApiErrorMessage(studentsResult.reason));
     }
 
     if (activitiesResult.status === "fulfilled") {
       setActivityLogs(activitiesResult.value);
       setActivitiesError(null);
     } else {
-      setActivitiesError(
-        getSchoolApiErrorMessage(activitiesResult.reason),
-      );
+      setActivityLogs([]);
+      setActivitiesError(getSchoolApiErrorMessage(activitiesResult.reason));
+      setActivityStatus("all");
     }
 
     setIsLoading(false);
@@ -98,22 +143,15 @@ export default function SchoolStudentsPage() {
 
     return () => {
       window.clearTimeout(timeoutId);
+
+      // Invalidate any request that is still running after unmount.
+      loadRequestId.current += 1;
     };
   }, [loadData]);
 
   const handleRetry = () => {
-    setIsLoading(true);
     void loadData();
   };
-
-  const [search, setSearch] = useState("");
-  const [department, setDepartment] = useState("all");
-  const [level, setLevel] = useState("all");
-  const [company, setCompany] = useState("all");
-  const [placementStatus, setPlacementStatus] =
-    useState<PlacementFilter>("all");
-  const [activityStatus, setActivityStatus] =
-    useState<ActivityFilter>("all");
 
   const activeStudentIds = useMemo(
     () => new Set(activityLogs.map((activityLog) => activityLog.studentId)),
@@ -122,9 +160,7 @@ export default function SchoolStudentsPage() {
 
   const totalStudents = students.length;
 
-  const placedStudents = students.filter(
-    (student) => student.placementCompany.trim().length > 0,
-  ).length;
+  const placedStudents = students.filter(isStudentPlaced).length;
 
   const unplacedStudents = totalStudents - placedStudents;
 
@@ -140,7 +176,9 @@ export default function SchoolStudentsPage() {
 
   const levels = useMemo(
     () =>
-      [...new Set(students.map((student) => student.level).filter(Boolean))].sort(),
+      [
+        ...new Set(students.map((student) => student.level).filter(Boolean)),
+      ].sort(),
     [students],
   );
 
@@ -149,6 +187,7 @@ export default function SchoolStudentsPage() {
       [
         ...new Set(
           students
+            .filter(isStudentPlaced)
             .map((student) => student.placementCompany.trim())
             .filter(Boolean),
         ),
@@ -160,7 +199,7 @@ export default function SchoolStudentsPage() {
     const query = search.trim().toLowerCase();
 
     return students.filter((student) => {
-      const hasPlacement = student.placementCompany.trim().length > 0;
+      const hasPlacement = isStudentPlaced(student);
       const hasActivity = activeStudentIds.has(student.id);
 
       const matchesSearch =
@@ -190,8 +229,11 @@ export default function SchoolStudentsPage() {
         (placementStatus === "placed" && hasPlacement) ||
         (placementStatus === "unplaced" && !hasPlacement);
 
+      // Do not apply activity filtering while activity data is unavailable.
+      const activityDataUnavailable = isLoading || Boolean(activitiesError);
+
       const matchesActivity =
-        Boolean(activitiesError) ||
+        activityDataUnavailable ||
         activityStatus === "all" ||
         (activityStatus === "active" && hasActivity) ||
         (activityStatus === "no-activity" && !hasActivity);
@@ -215,6 +257,7 @@ export default function SchoolStudentsPage() {
     placementStatus,
     activityStatus,
     activitiesError,
+    isLoading,
   ]);
 
   const hasActiveFilters =
@@ -239,54 +282,15 @@ export default function SchoolStudentsPage() {
       <SchoolNavigation />
 
       <main className="min-w-0 px-4 pb-10 pt-5 sm:px-6 lg:ml-56 lg:px-8 lg:pt-8">
-        {/* Top bar */}
-        <div className="mb-8 flex items-center justify-between gap-4">
-          <div>
-            <Link
-  href="/school/dashboard"
-  className="text-xs font-bold text-slate-700 transition-colors hover:text-blue-600"
->
-  School Portal / Student Management
-</Link>
-          </div>
+        <SchoolHeader variant="inline">
+          <Link
+            href="/school/dashboard"
+            className="text-base font-bold text-slate-700 transition-colors hover:text-blue-600"
+          >
+            School Portal / Student Management
+          </Link>
+        </SchoolHeader>
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                className="h-5 w-5"
-                aria-hidden="true"
-              >
-                <path
-                  d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-
-            <div className="hidden items-center gap-3 sm:flex">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e9eaff] text-sm font-bold text-[#343eaa]">
-                SC
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-800">
-                  School Coordinator
-                </p>
-                <p className="text-xs text-slate-500">Administrator</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Page heading */}
         <section className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
             <p className="mb-2 text-sm font-medium text-orange-500">
@@ -305,14 +309,13 @@ export default function SchoolStudentsPage() {
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             <span className="text-sm text-slate-600">
               <strong className="font-semibold text-slate-800">
-                {studentsError ? "—" : totalStudents}
+                {isLoading || studentsError ? "—" : totalStudents}
               </strong>{" "}
               total students
             </span>
           </div>
         </section>
 
-        {/* API error messages and retry */}
         {(studentsError || activitiesError) && (
           <div
             role="alert"
@@ -349,7 +352,6 @@ export default function SchoolStudentsPage() {
           </div>
         )}
 
-        {/* Summary cards */}
         <section
           aria-label="Student summary"
           className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3"
@@ -361,7 +363,7 @@ export default function SchoolStudentsPage() {
                   Total Students
                 </p>
                 <p className="mt-3 text-3xl font-bold text-[#10195c]">
-                  {studentsError ? "—" : totalStudents}
+                  {isLoading || studentsError ? "—" : totalStudents}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
                   Registered students
@@ -393,10 +395,10 @@ export default function SchoolStudentsPage() {
                   Placed Students
                 </p>
                 <p className="mt-3 text-3xl font-bold text-emerald-600">
-                  {studentsError ? "—" : placedStudents}
+                  {isLoading || studentsError ? "—" : placedStudents}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
-                  Students with a company
+                  Students with a confirmed placement
                 </p>
               </div>
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
@@ -425,10 +427,10 @@ export default function SchoolStudentsPage() {
                   Unplaced Students
                 </p>
                 <p className="mt-3 text-3xl font-bold text-amber-600">
-                  {studentsError ? "—" : unplacedStudents}
+                  {isLoading || studentsError ? "—" : unplacedStudents}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
-                  Students without a company
+                  Students without a confirmed placement
                 </p>
               </div>
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
@@ -451,7 +453,6 @@ export default function SchoolStudentsPage() {
           </div>
         </section>
 
-        {/* Monitoring and filters */}
         <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm shadow-slate-200/40">
           <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div>
@@ -581,7 +582,7 @@ export default function SchoolStudentsPage() {
                     setActivityStatus(event.target.value as ActivityFilter)
                   }
                   className={selectClassName}
-                  disabled={Boolean(activitiesError)}
+                  disabled={isLoading || Boolean(activitiesError)}
                 >
                   <option value="all">All activity statuses</option>
                   <option value="active">Active</option>
@@ -589,6 +590,13 @@ export default function SchoolStudentsPage() {
                 </select>
               </FilterField>
             </div>
+
+            {activitiesError && (
+              <p className="text-xs text-amber-700">
+                Activity filtering is unavailable because activity records
+                could not be loaded. Retry to restore this filter.
+              </p>
+            )}
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm text-slate-500" aria-live="polite">
@@ -601,7 +609,8 @@ export default function SchoolStudentsPage() {
                     <span className="font-semibold text-slate-800">
                       {filteredStudents.length}
                     </span>{" "}
-                    {filteredStudents.length === 1 ? "student" : "students"} found
+                    {filteredStudents.length === 1 ? "student" : "students"}{" "}
+                    found
                   </>
                 )}
               </p>
@@ -630,8 +639,7 @@ export default function SchoolStudentsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredStudents.map((student) => {
-                  const hasPlacement =
-                    student.placementCompany.trim().length > 0;
+                  const hasPlacement = isStudentPlaced(student);
                   const hasActivity = activeStudentIds.has(student.id);
 
                   return (
@@ -641,15 +649,11 @@ export default function SchoolStudentsPage() {
                     >
                       <td className="px-6 py-4">
                         <Link
-                          href={`/school/students/${student.id}`}
+                          href={`/school/students/${encodeURIComponent(student.id)}`}
                           className="group flex items-center gap-3"
                         >
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e9eaff] text-sm font-bold text-[#343eaa]">
-                            {student.name
-                              .split(" ")
-                              .map((part) => part[0])
-                              .join("")
-                              .slice(0, 2)}
+                            {getStudentInitials(student.name)}
                           </div>
                           <div>
                             <p className="text-sm font-semibold text-slate-800 group-hover:text-orange-600">
@@ -678,7 +682,7 @@ export default function SchoolStudentsPage() {
                           <div className="space-y-1.5">
                             <StatusBadge status="success">Placed</StatusBadge>
                             <p className="max-w-[180px] text-xs text-slate-500">
-                              {student.placementCompany}
+                              {student.placementCompany || "Company assigned"}
                             </p>
                           </div>
                         ) : (
@@ -686,7 +690,7 @@ export default function SchoolStudentsPage() {
                         )}
                       </td>
                       <td className="px-4 py-4">
-                        {activitiesError ? (
+                        {isLoading || activitiesError ? (
                           <StatusBadge status="neutral">Unavailable</StatusBadge>
                         ) : hasActivity ? (
                           <StatusBadge status="success">Active</StatusBadge>
@@ -739,8 +743,7 @@ export default function SchoolStudentsPage() {
           {/* Mobile cards */}
           <div className="space-y-3 p-4 md:hidden">
             {filteredStudents.map((student) => {
-              const hasPlacement =
-                student.placementCompany.trim().length > 0;
+              const hasPlacement = isStudentPlaced(student);
               const hasActivity = activeStudentIds.has(student.id);
 
               return (
@@ -750,15 +753,11 @@ export default function SchoolStudentsPage() {
                 >
                   <div className="flex items-start gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e9eaff] text-sm font-bold text-[#343eaa]">
-                      {student.name
-                        .split(" ")
-                        .map((part) => part[0])
-                        .join("")
-                        .slice(0, 2)}
+                      {getStudentInitials(student.name)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <Link
-                        href={`/school/students/${student.id}`}
+                        href={`/school/students/${encodeURIComponent(student.id)}`}
                         className="text-sm font-semibold text-slate-800 hover:text-orange-600"
                       >
                         {student.name}
@@ -789,7 +788,7 @@ export default function SchoolStudentsPage() {
                       <p className="text-xs text-slate-500">Company</p>
                       <p className="mt-1 break-words text-sm font-medium text-slate-700">
                         {hasPlacement
-                          ? student.placementCompany
+                          ? student.placementCompany || "Company assigned"
                           : "No company assigned"}
                       </p>
                     </div>
@@ -806,7 +805,7 @@ export default function SchoolStudentsPage() {
                     <div>
                       <p className="text-xs text-slate-500">Activity</p>
                       <div className="mt-1">
-                        {activitiesError ? (
+                        {isLoading || activitiesError ? (
                           <StatusBadge status="neutral">Unavailable</StatusBadge>
                         ) : hasActivity ? (
                           <StatusBadge status="success">Active</StatusBadge>
@@ -820,7 +819,7 @@ export default function SchoolStudentsPage() {
                   </div>
 
                   <Link
-                    href={`/school/students/${student.id}`}
+                    href={`/school/students/${encodeURIComponent(student.id)}`}
                     className="mt-4 inline-flex text-sm font-semibold text-orange-600 hover:text-orange-700"
                   >
                     View student profile →
@@ -855,11 +854,11 @@ export default function SchoolStudentsPage() {
             <p className="text-sm text-slate-500">
               Showing{" "}
               <span className="font-semibold text-slate-800">
-                {studentsError ? "—" : filteredStudents.length}
+                {isLoading || studentsError ? "—" : filteredStudents.length}
               </span>{" "}
               of{" "}
               <span className="font-semibold text-slate-800">
-                {studentsError ? "—" : totalStudents}
+                {isLoading || studentsError ? "—" : totalStudents}
               </span>{" "}
               {totalStudents === 1 ? "student" : "students"}
             </p>
