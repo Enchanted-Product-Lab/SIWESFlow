@@ -26,6 +26,25 @@ export default function SchoolRouteGuard({
 
     setStatus("checking");
 
+    // Fast client-side JWT role inspection
+    let tokenRole: string | null = null;
+    try {
+      const parts = token.split(".");
+      if (parts.length === 3) {
+        const payload = JSON.parse(
+          atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))
+        );
+        tokenRole = payload.role ?? null;
+      }
+    } catch {
+      // ignore parse errors and proceed to server check
+    }
+
+    if (tokenRole && tokenRole !== "SCHOOL_COORDINATOR") {
+      setStatus("denied");
+      return;
+    }
+
     try {
       const response = await apiClient.get("/auth/me");
       const user = response.data?.data ?? response.data;
@@ -47,6 +66,32 @@ export default function SchoolRouteGuard({
 
       if (statusCode === 403) {
         setStatus("denied");
+        return;
+      }
+
+      // If /auth/me returns 404 (e.g. backend redeploy pending), verify via /schools/me
+      if (statusCode === 404) {
+        try {
+          await apiClient.get("/schools/me");
+          setStatus("allowed");
+          return;
+        } catch (schoolErr: unknown) {
+          const schoolStatus = (schoolErr as { response?: { status?: number } })?.response?.status;
+          if (schoolStatus === 401) {
+            localStorage.removeItem("siwesflow_token");
+            router.replace("/auth/login");
+            return;
+          }
+          if (schoolStatus === 403) {
+            setStatus("denied");
+            return;
+          }
+        }
+      }
+
+      // If the client has a valid coordinator token in local storage, grant access
+      if (tokenRole === "SCHOOL_COORDINATOR") {
+        setStatus("allowed");
         return;
       }
 
