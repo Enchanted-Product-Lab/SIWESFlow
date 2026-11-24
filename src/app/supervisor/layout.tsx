@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import SupervisorNavigation from '../../components/supervisor/SupervisorNavigation';
+import RoleRouteGuard from '../../components/shared/RoleRouteGuard';
 import Image from 'next/image';
 
 export default function SupervisorLayout({
@@ -13,6 +14,11 @@ export default function SupervisorLayout({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
+    <RoleRouteGuard
+      allowedRole="SUPERVISOR"
+      portalLabel="company supervisor"
+      fallbackPath="/supervisors/me"
+    >
     <div className="flex min-h-screen bg-slate-50 font-sans">
       
       {/* 1. Mobile Top Header (Visible only on screens smaller than lg) */}
@@ -63,5 +69,6 @@ export default function SupervisorLayout({
       </main>
       
     </div>
+    </RoleRouteGuard>
   );
 }

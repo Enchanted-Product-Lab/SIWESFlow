@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { BookOpen, UserCheck } from 'lucide-react';
-import DashboardMetrics from '../../../components/supervisor/DashboardMetrics';
+import DashboardMetrics, { type SupervisorMetricsData } from '../../../components/supervisor/DashboardMetrics';
 import RecentActivityTable from '../../../components/supervisor/RecentActivityTable';
 import apiClient from '../../../services/apiClient';
 
@@ -15,41 +15,45 @@ type Student = React.ComponentProps<typeof RecentActivityTable>['students'][0];
 export default function SupervisorDashboard() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [metrics, setMetrics] = useState<SupervisorMetricsData | null>(null);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [actRes, stuRes] = await Promise.allSettled([
+        const [actRes, stuRes, metRes] = await Promise.allSettled([
           apiClient.get('/activities'),
           apiClient.get('/students'),
+          apiClient.get('/supervisors/me/metrics'),
         ]);
 
         if (actRes.status === 'fulfilled') {
-          // Strictly type the response to match ActivityLog
           const rawAct = actRes.value.data as ActivityLog[] | { data: ActivityLog[] };
-          const listAct = Array.isArray(rawAct) 
-            ? rawAct 
+          const listAct = Array.isArray(rawAct)
+            ? rawAct
             : (rawAct && 'data' in rawAct && Array.isArray(rawAct.data) ? rawAct.data : []);
-          
+
           setLogs(listAct);
         }
 
         if (stuRes.status === 'fulfilled') {
-          // Strictly type the response to match Student
           const rawStu = stuRes.value.data as Student[] | { data: Student[] } | { students: Student[] };
-          const listStu = Array.isArray(rawStu) 
-            ? rawStu 
-            : (rawStu && 'data' in rawStu && Array.isArray(rawStu.data) 
-                ? rawStu.data 
+          const listStu = Array.isArray(rawStu)
+            ? rawStu
+            : (rawStu && 'data' in rawStu && Array.isArray(rawStu.data)
+                ? rawStu.data
                 : (rawStu && 'students' in rawStu && Array.isArray(rawStu.students) ? rawStu.students : []));
-          
+
           setStudents(listStu);
+        }
+
+        if (metRes.status === 'fulfilled' && metRes.value.data) {
+          setMetrics(metRes.value.data as SupervisorMetricsData);
         }
       } catch (err) {
         console.error('Failed to load supervisor dashboard data:', err);
       }
     }
-    
+
     loadData();
   }, []);
 
@@ -66,7 +70,7 @@ export default function SupervisorDashboard() {
 
       {/* Metrics Grid Component */}
       <div>
-        <DashboardMetrics />
+        <DashboardMetrics data={metrics} />
       </div>
 
       {/* Quick Action Navigation Bar */}
