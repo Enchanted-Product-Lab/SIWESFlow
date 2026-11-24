@@ -12,7 +12,8 @@ export default function LoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [formData, setFormData] = useState({ email: '', password: '', totpCode: '' });
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [error, setError] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -33,8 +34,15 @@ export default function LoginPage() {
       // Live API call to the backend staging server
       const response = await apiClient.post('/auth/login', {
         email: formData.email,
-        password: formData.password
+        password: formData.password,
+        ...(requiresTwoFactor && formData.totpCode ? { totpCode: formData.totpCode.trim() } : {}),
       });
+
+      if (response.data?.requiresTwoFactor) {
+        setRequiresTwoFactor(true);
+        setIsLoading(false);
+        return;
+      }
 
       const authToken = response.data?.accessToken || response.data?.token;
       const user = response.data?.user;
@@ -189,16 +197,44 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="flex items-center">
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                className="h-4 w-4 text-[#0015A4] border-slate-300 rounded focus:ring-[#0015A4]"
-              />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-slate-700">
-                Remember me
-              </label>
+            {requiresTwoFactor && (
+              <div className="space-y-1.5">
+                <label htmlFor="totpCode" className="block text-sm font-medium text-slate-700">
+                  Two-Factor Authentication Code
+                </label>
+                <input
+                  id="totpCode"
+                  name="totpCode"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  required
+                  value={formData.totpCode}
+                  onChange={handleChange}
+                  className="block w-full px-3.5 py-3 text-sm tracking-widest border text-slate-700 border-slate-300 rounded-lg focus:ring-[#0015A4] focus:border-[#0015A4] transition-colors"
+                  placeholder="Enter 6-digit code"
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <input
+                  id="remember-me"
+                  name="remember-me"
+                  type="checkbox"
+                  className="h-4 w-4 text-[#0015A4] border-slate-300 rounded focus:ring-[#0015A4]"
+                />
+                <label htmlFor="remember-me" className="ml-2 block text-sm text-slate-700">
+                  Remember me
+                </label>
+              </div>
+              <Link
+                href="/auth/forgot-password"
+                className="text-sm font-medium text-[#0015A4] hover:underline"
+              >
+                Forgot password?
+              </Link>
             </div>
 
             <button
