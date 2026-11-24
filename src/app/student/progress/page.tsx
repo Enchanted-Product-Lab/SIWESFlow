@@ -23,11 +23,12 @@ export default function StudentProgressPage() {
   useEffect(() => {
     const fetchProgress = async () => {
       try {
-        const res = await apiClient.get("/activities");
+        const res = await apiClient.get("/activities", { params: { pageSize: 100 } });
         const raw = res.data;
         const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
-        const totalHours = list.reduce((sum: number, a: any) => sum + (Number(a.hoursWorked) || 0), 0);
-        const approved = list.filter((a: any) => a.status === "APPROVED").length;
+        const approvedList = list.filter((a: any) => a.status === "APPROVED");
+        const totalHours = approvedList.reduce((sum: number, a: any) => sum + (Number(a.hoursWorked) || 0), 0);
+        const approved = approvedList.length;
         const pending = list.filter((a: any) => a.status === "PENDING").length;
         const pct = totalHours > 0 ? Math.min(100, Math.round((totalHours / 480) * 100)) : 0;
         const weeks = totalHours > 0 ? Math.min(24, Math.max(1, Math.round(totalHours / 20))) : 0;

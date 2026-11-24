@@ -532,7 +532,9 @@ export async function fetchStudentCompletion(
 }
 
 export async function fetchActivitiesWithFallback(): Promise<ActivityLog[]> {
-  const res = await apiClient.get("/activities");
+  const res = await apiClient.get("/activities", {
+    params: { pageSize: 100 },
+  });
 
   return extractArray(res.data).map(
     mapBackendActivityToActivityLog,
@@ -543,7 +545,7 @@ export async function fetchStudentActivities(
   studentId: string,
 ): Promise<ActivityLog[]> {
   const res = await apiClient.get("/activities", {
-    params: { studentId },
+    params: { studentId, pageSize: 100 },
   });
 
   return extractArray(res.data).map(
