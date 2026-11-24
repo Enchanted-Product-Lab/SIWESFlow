@@ -20,43 +20,104 @@ export default function StudentProgressPage() {
     completionPercentage: 0,
   });
 
-  useEffect(() => {
-    const fetchProgress = async () => {
-      try {
-        const res = await apiClient.get("/activities", { params: { pageSize: 100 } });
-        const raw = res.data;
-        const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
-        const approvedList = list.filter((a: any) => a.status === "APPROVED");
-        const totalHours = approvedList.reduce((sum: number, a: any) => sum + (Number(a.hoursWorked) || 0), 0);
-        const approved = approvedList.length;
-        const pending = list.filter((a: any) => a.status === "PENDING").length;
-        const pct = totalHours > 0 ? Math.min(100, Math.round((totalHours / 480) * 100)) : 0;
-        const weeks = totalHours > 0 ? Math.min(24, Math.max(1, Math.round(totalHours / 20))) : 0;
+  const [completionInfo, setCompletionInfo] = useState<{
+    completion: {
+      id: string;
+      status: string;
+      certificateReference?: string | null;
+      remarks?: string | null;
+    } | null;
+    requirements: {
+      totalHours: number;
+      minHours: number;
+      weeksLogged: number;
+      minWeeks: number;
+      unreviewedEntries: number;
+      met: boolean;
+    } | null;
+  }>({ completion: null, requirements: null });
+  const [requesting, setRequesting] = useState(false);
+  const [requestMsg, setRequestMsg] = useState("");
+  const [requestErr, setRequestErr] = useState("");
 
-        setStats({
-          completedWeeks: weeks,
-          totalWeeks: 24,
-          loggedHours: totalHours,
-          requiredHours: 480,
-          approvedEntries: approved,
-          pendingEntries: pending,
-          completionPercentage: pct,
-        });
-      } catch {
-        setStats({
-          completedWeeks: 0,
-          totalWeeks: 24,
-          loggedHours: 0,
-          requiredHours: 480,
-          approvedEntries: 0,
-          pendingEntries: 0,
-          completionPercentage: 0,
-        });
+  const fetchProgress = async () => {
+    try {
+      const [actRes, meRes] = await Promise.allSettled([
+        apiClient.get("/activities", { params: { pageSize: 100 } }),
+        apiClient.get("/students/me"),
+      ]);
+
+      const raw = actRes.status === "fulfilled" ? actRes.value.data : [];
+      const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+      const approvedList = list.filter((a: any) => a.status === "APPROVED");
+      let totalHours = approvedList.reduce((sum: number, a: any) => sum + (Number(a.hoursWorked) || 0), 0);
+      let approved = approvedList.length;
+      let pending = list.filter((a: any) => a.status === "PENDING").length;
+      let requiredHours = 480;
+      let weeks = totalHours > 0 ? Math.min(24, Math.max(1, Math.round(totalHours / 20))) : 0;
+
+      if (meRes.status === "fulfilled" && meRes.value.data?.id) {
+        try {
+          const compRes = await apiClient.get(`/completions/students/${meRes.value.data.id}`);
+          const compData = compRes.data;
+          if (compData?.requirements) {
+            totalHours = compData.requirements.totalHours ?? totalHours;
+            requiredHours = compData.requirements.minHours ?? 480;
+            weeks = compData.requirements.weeksLogged ?? weeks;
+            pending = compData.requirements.unreviewedEntries ?? pending;
+            approved = compData.requirements.approvedEntries ?? approved;
+          }
+          setCompletionInfo({
+            completion: compData?.completion ?? null,
+            requirements: compData?.requirements ?? null,
+          });
+        } catch {
+          // fallback to activity-derived metrics
+        }
       }
-    };
 
-    fetchProgress();
+      const pct = totalHours > 0 ? Math.min(100, Math.round((totalHours / requiredHours) * 100)) : 0;
+
+      setStats({
+        completedWeeks: weeks,
+        totalWeeks: Math.max(completionInfo.requirements?.minWeeks ?? 12, weeks),
+        loggedHours: totalHours,
+        requiredHours,
+        approvedEntries: approved,
+        pendingEntries: pending,
+        completionPercentage: pct,
+      });
+    } catch {
+      setStats({
+        completedWeeks: 0,
+        totalWeeks: 12,
+        loggedHours: 0,
+        requiredHours: 480,
+        approvedEntries: 0,
+        pendingEntries: 0,
+        completionPercentage: 0,
+      });
+    }
+  };
+
+  useEffect(() => {
+    void fetchProgress();
   }, []);
+
+  const handleRequestCompletion = async () => {
+    setRequesting(true);
+    setRequestErr("");
+    setRequestMsg("");
+    try {
+      await apiClient.post("/completions");
+      setRequestMsg("Completion request submitted to your supervisor for sign-off.");
+      await fetchProgress();
+    } catch (err: any) {
+      setRequestErr(err?.response?.data?.error || "Unable to submit completion request.");
+    } finally {
+      setRequesting(false);
+    }
+  };
 
   const milestones = [
     {
@@ -124,6 +185,60 @@ export default function StudentProgressPage() {
                 />
               </div>
             </div>
+
+            {requestMsg && (
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
+                {requestMsg}
+              </div>
+            )}
+            {requestErr && (
+              <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+                {requestErr}
+              </div>
+            )}
+
+            {completionInfo.completion ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs space-y-1">
+                <p className="font-semibold text-slate-800">
+                  Completion Status: {completionInfo.completion.status.replace(/_/g, " ")}
+                </p>
+                {completionInfo.completion.certificateReference && (
+                  <p className="text-emerald-700 font-mono">
+                    Certificate Reference: {completionInfo.completion.certificateReference}
+                  </p>
+                )}
+                {completionInfo.completion.remarks && (
+                  <p className="text-slate-600">Remarks: {completionInfo.completion.remarks}</p>
+                )}
+                {(completionInfo.completion.status === "DECLINED_SUPERVISOR" ||
+                  completionInfo.completion.status === "DECLINED_SCHOOL") &&
+                  completionInfo.requirements?.met && (
+                    <button
+                      type="button"
+                      disabled={requesting}
+                      onClick={handleRequestCompletion}
+                      className="mt-2 inline-flex items-center gap-2 rounded-lg bg-[#0015A4] px-4 py-2 text-xs font-semibold text-white hover:bg-blue-900 disabled:opacity-60"
+                    >
+                      {requesting ? "Submitting..." : "Resubmit Completion Request"}
+                    </button>
+                  )}
+              </div>
+            ) : (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  disabled={requesting || !completionInfo.requirements?.met}
+                  onClick={handleRequestCompletion}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#0015A4] px-4 py-2.5 text-xs font-semibold text-white hover:bg-blue-900 disabled:opacity-50"
+                >
+                  {requesting
+                    ? "Submitting..."
+                    : completionInfo.requirements?.met
+                    ? "Request SIWES Completion"
+                    : "Complete 480 approved hours & 12 weeks to request completion"}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="relative h-36 w-36 shrink-0">

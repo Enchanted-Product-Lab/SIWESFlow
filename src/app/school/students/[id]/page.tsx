@@ -14,6 +14,7 @@ import {
   fetchStudentById,
   fetchStudentActivities,
   fetchStudentCompletion,
+  verifyStudentCompletion,
   getSchoolApiErrorMessage,
 } from "@/services/schoolService";
 
@@ -52,6 +53,9 @@ export default function StudentProfilePage() {
   const [studentError, setStudentError] = useState<string | null>(null);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
   const [completionError, setCompletionError] = useState<string | null>(null);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyFeedback, setVerifyFeedback] = useState<string | null>(null);
+  const [declineRemarks, setDeclineRemarks] = useState("");
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -544,6 +548,80 @@ export default function StudentProfilePage() {
                   completion hours and weeks. Pending and revision-requested
                   entries are excluded by the backend.
                 </p>
+
+                {completion?.completion?.status === "PENDING_SCHOOL" && (
+                  <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50/60 p-4 space-y-3">
+                    <p className="text-sm font-semibold text-[#10195c]">
+                      Supervisor signed off. Ready for school verification.
+                    </p>
+                    {verifyFeedback && (
+                      <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                        {verifyFeedback}
+                      </p>
+                    )}
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        type="button"
+                        disabled={verifyBusy}
+                        onClick={async () => {
+                          if (!completion.completion?.id) return;
+                          setVerifyBusy(true);
+                          setVerifyFeedback(null);
+                          try {
+                            await verifyStudentCompletion(completion.completion.id, "APPROVE");
+                            await loadData();
+                          } catch (err) {
+                            setVerifyFeedback(getSchoolApiErrorMessage(err));
+                          } finally {
+                            setVerifyBusy(false);
+                          }
+                        }}
+                        className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        {verifyBusy ? "Processing..." : "Verify SIWES Completion"}
+                      </button>
+                      <div className="flex flex-1 gap-2">
+                        <input
+                          type="text"
+                          value={declineRemarks}
+                          onChange={(e) => setDeclineRemarks(e.target.value)}
+                          placeholder="Remarks if declining..."
+                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800"
+                        />
+                        <button
+                          type="button"
+                          disabled={verifyBusy || !declineRemarks.trim()}
+                          onClick={async () => {
+                            if (!completion.completion?.id || !declineRemarks.trim()) return;
+                            setVerifyBusy(true);
+                            setVerifyFeedback(null);
+                            try {
+                              await verifyStudentCompletion(completion.completion.id, "DECLINE", declineRemarks.trim());
+                              setDeclineRemarks("");
+                              await loadData();
+                            } catch (err) {
+                              setVerifyFeedback(getSchoolApiErrorMessage(err));
+                            } finally {
+                              setVerifyBusy(false);
+                            }
+                          }}
+                          className="rounded-lg border border-red-300 bg-white px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {completion?.completion?.certificateReference && (
+                  <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
+                    Verified SIWES Experience Certificate Reference:{" "}
+                    <span className="font-mono font-semibold">
+                      {completion.completion.certificateReference}
+                    </span>
+                  </div>
+                )}
               </section>
 
               {/* Monitoring and verification */}

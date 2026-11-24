@@ -57,6 +57,10 @@ export default function LoginPage() {
         router.push('/supervisor/dashboard');
       } else if (user?.role === "SCHOOL_COORDINATOR") {
         router.push("/school/dashboard");
+      } else if (user?.role === "COMPANY_ADMIN") {
+        router.push("/company/dashboard");
+      } else if (user?.role === "PLATFORM_ADMIN") {
+        router.push("/admin/dashboard");
       } else {
         try {
           await apiClient.get('/students/me');

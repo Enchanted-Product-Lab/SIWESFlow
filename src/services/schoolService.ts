@@ -96,6 +96,12 @@ export interface SchoolStudent extends Student {
 
 /** Authoritative completion information from the backend. */
 export interface StudentCompletion {
+  completion?: {
+    id: string;
+    status: string;
+    certificateReference?: string | null;
+    remarks?: string | null;
+  } | null;
   requirements: {
     totalHours: number;
     minHours: number;
@@ -519,8 +525,21 @@ export async function fetchStudentCompletion(
     response,
     "requirements",
   );
+  const rawCompletion = response.completion as Record<string, unknown> | null | undefined;
 
   return {
+    completion: rawCompletion
+      ? {
+          id: String(rawCompletion.id ?? ""),
+          status: String(rawCompletion.status ?? ""),
+          certificateReference:
+            typeof rawCompletion.certificateReference === "string"
+              ? rawCompletion.certificateReference
+              : null,
+          remarks:
+            typeof rawCompletion.remarks === "string" ? rawCompletion.remarks : null,
+        }
+      : null,
     requirements: {
       totalHours: Number(requirements.totalHours) || 0,
       minHours: Number(requirements.minHours) || 480,
@@ -529,6 +548,21 @@ export async function fetchStudentCompletion(
       met: requirements.met === true,
     },
   };
+}
+
+export async function verifyStudentCompletion(
+  completionId: string,
+  decision: "APPROVE" | "DECLINE",
+  remarks?: string,
+) {
+  const res = await apiClient.post(
+    `/completions/${encodeURIComponent(completionId)}/school-verify`,
+    {
+      decision,
+      ...(remarks ? { remarks } : {}),
+    },
+  );
+  return res.data;
 }
 
 export async function fetchActivitiesWithFallback(): Promise<ActivityLog[]> {
