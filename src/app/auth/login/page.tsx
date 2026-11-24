@@ -44,13 +44,18 @@ export default function LoginPage() {
         localStorage.setItem('siwesflow_token', authToken);
       }
 
-      // Route based on RBAC roles (fallback to student onboarding/dashboard)
+      // Route based on RBAC roles (check if returning student already has a profile)
       if (user?.role === 'SUPERVISOR') {
         router.push('/supervisor/dashboard');
-      }else if (user?.role === "SCHOOL_COORDINATOR") {
+      } else if (user?.role === "SCHOOL_COORDINATOR") {
         router.push("/school/dashboard");
       } else {
-        router.push('/student/onboarding');
+        try {
+          await apiClient.get('/students/me');
+          router.push('/student/dashboard');
+        } catch {
+          router.push('/student/onboarding');
+        }
       }
 
     } catch (err: unknown) {
